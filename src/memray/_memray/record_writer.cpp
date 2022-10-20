@@ -1,6 +1,7 @@
 #include <chrono>
 #include <fcntl.h>
 #include <stdexcept>
+#include <typeinfo>
 
 #include "record_writer.h"
 
@@ -47,6 +48,7 @@ RecordWriter::RecordWriter(
             ::getpid(),
             getPythonAllocator()};
     strncpy(d_header.magic, MAGIC, sizeof(d_header.magic));
+    MY_DEBUG("RecordWriter is created: Sink type - %s, command_line - %s", typeid(d_sink).name(), command_line.c_str());
 }
 
 bool

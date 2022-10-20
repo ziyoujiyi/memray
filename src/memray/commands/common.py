@@ -22,6 +22,16 @@ from memray._memray import SymbolicSupport
 from memray._memray import get_symbolic_support
 from memray.reporters import BaseReporter
 
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter(
+    fmt='%(asctime)s %(levelname)-2s [%(filename)s:%(lineno)d] %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
 
 class ReporterFactory(Protocol):
     def __call__(

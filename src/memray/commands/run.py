@@ -19,6 +19,7 @@ from memray import SocketDestination
 from memray import Tracker
 from memray._errors import MemrayCommandError
 from memray.commands.live import LiveCommand
+from memray.commands.common import logger
 
 
 def _get_free_port() -> int:
@@ -45,7 +46,7 @@ def _run_tracker(
     except OSError as error:
         raise MemrayCommandError(str(error), exit_code=1)
 
-    with tracker:
+    with tracker:  ## first, call __enter__ method
         pid = os.getpid()
         try:
             if args.run_as_module:

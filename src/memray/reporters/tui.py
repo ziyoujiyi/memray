@@ -23,6 +23,8 @@ from rich.table import Table
 from memray import AllocationRecord
 from memray._memray import size_fmt
 
+from ..commands.common import logger
+
 MAX_MEMORY_RATIO = 0.95
 
 DEFAULT_TERMINAL_LINES = 24
@@ -143,7 +145,9 @@ def aggregate_allocations(
     )
 
     current_total = 0
+    allocation_idx = 0
     for allocation in allocations:
+        logger.info("allocation: {}".format(allocation))
         if current_total >= memory_threshold:
             break
         current_total += allocation.size
@@ -153,6 +157,8 @@ def aggregate_allocations(
             if native_traces
             else allocation.stack_trace()
         )
+        allocation_idx += 1
+        logger.info("allocation_idx: {}, stack_trace: {}".format(allocation_idx, stack_trace))
         if not stack_trace:
             frame = processed_allocations[Location(function="???", file="???")]
             frame.total_memory += allocation.size
@@ -171,6 +177,7 @@ def aggregate_allocations(
 
         # Walk upwards and sum totals
         visited = set()
+        logger.info("caller_frames: {}".format(caller_frames))
         for function, file_name, _ in caller_frames:
             location = Location(function=function, file=file_name)
             frame = processed_allocations[location]

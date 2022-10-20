@@ -6,6 +6,13 @@
 
 namespace memray {
 
+#define __MY_DEBUG
+#ifdef __MY_DEBUG
+#define MY_DEBUG(format, args...) printf("FILE: " __FILE__ ", LINE: %d: " format "\n", __LINE__, ##args)  // __VA_ARGS__ -> args
+#else 
+#define MY_DEBUG(format, ...) printf("FILE: " __FILE__ ", LINE: %d: " format "\n", __LINE__)
+#endif
+
 enum logLevel {
     NOTSET = 0,
     DEBUG = 10,

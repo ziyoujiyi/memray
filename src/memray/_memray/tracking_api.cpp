@@ -17,6 +17,7 @@
 #include <type_traits>
 #include <unistd.h>
 #include <utility>
+#include <iostream>
 
 #include "compat.h"
 #include "exceptions.h"
@@ -153,7 +154,7 @@ PythonStackTracker::getUnsafe()
 {
     // See giant comment above.
     static_assert(std::is_trivially_destructible<PythonStackTracker>::value);
-    MEMRAY_FAST_TLS thread_local PythonStackTracker t_python_stack_tracker;
+    MEMRAY_FAST_TLS thread_local PythonStackTracker t_python_stack_tracker;  // static type
     return t_python_stack_tracker;
 }
 
@@ -734,10 +735,13 @@ void
 Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
 {
     if (RecursionGuard::isActive || !Tracker::isActive()) {
+        bool a = RecursionGuard::isActive;
+        bool b = Tracker::isActive();
+        MY_DEBUG("trackAllocationImpl failed ... RecursionGuard::isActive: %d, Tracker::isActive: %d, sz: ", a, b, size);
         return;
     }
     RecursionGuard guard;
-
+    MY_DEBUG("Entering trackAllocationImpl: hooks::Allocator type - %d, single_size - %d", (int)func, size);
     PythonStackTracker::get().emitPendingPushesAndPops();
 
     if (d_unwind_native_frames) {
@@ -791,7 +795,7 @@ static int
 dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size, void* data)
 {
     auto writer = reinterpret_cast<RecordWriter*>(data);
-    const char* filename = info->dlpi_name;
+    const char* filename = info->dlpi_name;  // object name
     std::string executable;
     assert(filename != nullptr);
     if (!filename[0]) {
@@ -804,14 +808,14 @@ dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size
     }
 
     std::vector<Segment> segments;
-    for (int i = 0; i < info->dlpi_phnum; i++) {
+    for (int i = 0; i < info->dlpi_phnum; i++) {  // head num
         const auto& phdr = info->dlpi_phdr[i];
         if (phdr.p_type == PT_LOAD) {
             segments.emplace_back(Segment{phdr.p_vaddr, phdr.p_memsz});
         }
     }
 
-    if (!writer->writeRecordUnsafe(SegmentHeader{filename, segments.size(), info->dlpi_addr})) {
+    if (!writer->writeRecordUnsafe(SegmentHeader{filename, segments.size(), info->dlpi_addr})) {  // ElfW base addr
         std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
         Tracker::deactivate();
         return 1;
@@ -960,6 +964,19 @@ Tracker::createTracker(
             memory_interval,
             follow_fork,
             trace_python_allocators));
+
+    MY_DEBUG("Tracker ins created && is activated");
+    void* ptr = hooks::malloc(99999999);  // use SysMalloc
+    void* ptr2 = malloc(8888888);  // use SysMalloc
+    void* ptr3 = intercept::malloc(6666666);
+    MY_DEBUG("Tracker malloc type: %d", &hooks::malloc);
+    MY_DEBUG("Tracker malloc type: %d", &malloc);
+    MY_DEBUG("Tracker malloc type: %d", intercept::malloc);
+    if (ptr) {
+        MY_DEBUG("test native malloc succeed");
+    } else {
+        MY_DEBUG("test native malloc failed");
+    }
     Py_RETURN_NONE;
 }
 

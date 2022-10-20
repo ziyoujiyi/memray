@@ -7,6 +7,7 @@ from memray import FileReader
 from memray._errors import MemrayCommandError
 from memray.commands.common import warn_if_not_enough_symbols
 from memray.reporters.summary import SummaryReporter
+from .common import logger
 
 
 class SummaryCommand:
@@ -66,7 +67,7 @@ class SummaryCommand:
         reader = FileReader(os.fspath(args.results), report_progress=True)
         if reader.metadata.has_native_traces:
             warn_if_not_enough_symbols()
-
+        logger.info(args)
         try:
             if args.temporary_allocation_threshold >= 0:
                 snapshot = iter(

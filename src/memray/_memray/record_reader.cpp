@@ -136,6 +136,7 @@ RecordReader::RecordReader(std::unique_ptr<Source> source, bool track_stacks)
 : d_input(std::move(source))
 , d_track_stacks(track_stacks)
 {
+    MY_DEBUG("RecordReader ins created! d_track_stacks: %d", track_stacks);
     readHeader(d_header);
 
     // Reserve some space for the different containers
@@ -610,7 +611,7 @@ RecordReader::Py_GetNativeStackFrame(FrameTree::index_t index, size_t generation
     if (list == nullptr) {
         return nullptr;
     }
-
+    MY_DEBUG("max_stacks: %lld", max_stacks);
     while (current_index != 0 && stacks_obtained++ != max_stacks) {
         auto frame = d_native_frames[current_index - 1];
         current_index = frame.index;
@@ -618,7 +619,9 @@ RecordReader::Py_GetNativeStackFrame(FrameTree::index_t index, size_t generation
         if (!resolved_frames) {
             continue;
         }
+        MY_DEBUG("current_index: %d, stacks_obtained: %d, resolved_frames_size: %d", current_index, stacks_obtained, resolved_frames->frames().size());
         for (auto& native_frame : resolved_frames->frames()) {
+            MY_DEBUG("native_frame - file: %s, line: %d, symbol: %s", native_frame.File().c_str(), native_frame.Line(), native_frame.Symbol().c_str());
             PyObject* pyframe = native_frame.toPythonObject(d_pystring_cache);
             if (pyframe == nullptr) {
                 return nullptr;

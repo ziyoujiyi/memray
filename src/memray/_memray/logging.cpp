@@ -37,7 +37,6 @@ logToStderr(const std::string& message, int level)
     if (level < LOG_THRESHOLD) {
         return;
     }
-
     std::cerr << prefixFromLogLevel(level) << message << std::endl;
 }
 

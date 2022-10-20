@@ -23,6 +23,7 @@ from . import summary
 from . import table
 from . import transform
 from . import tree
+from .common import logger
 
 _EPILOG = textwrap.dedent(
     """\
@@ -121,6 +122,7 @@ def main(args: Optional[List[str]] = None) -> int:
     parser = get_argument_parser()
     arg_values = parser.parse_args(args=args)
     set_log_level(determine_logging_level_from_verbosity(arg_values.verbose))
+    logger.info(arg_values)
 
     try:
         arg_values.entrypoint(arg_values, parser)
