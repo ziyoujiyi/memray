@@ -40,6 +40,9 @@ class RecordWriter
     bool inline writeRecordUnsafe(const FramePop& record);
     bool inline writeRecordUnsafe(const FramePush& record);
     bool inline writeRecordUnsafe(const MemoryRecord& record);
+    bool inline writeRecordUnsafe(const CpuRecord& record);
+    bool inline writeRecordUnsafe(const CpuSampleRecord& record);
+    bool inline writeRecordUnsafe(const NativeCpuSampleRecord& record);
     bool inline writeRecordUnsafe(const ContextSwitch& record);
     bool inline writeRecordUnsafe(const Segment& record);
     bool inline writeRecordUnsafe(const AllocationRecord& record);
@@ -165,6 +168,12 @@ bool inline RecordWriter::writeRecordUnsafe(const MemoryRecord& record)
            && writeVarint(record.ms_since_epoch - d_stats.start_time) && d_sink->flush();
 }
 
+bool inline RecordWriter::writeRecordUnsafe(const CpuRecord& record)
+{
+    RecordTypeAndFlags token{RecordType::CPU_RECORD, 0};
+    return writeSimpleType(token) && writeVarint(record.ms_since_epoch - d_stats.cpu_profiler_start_time) && d_sink->flush();
+}
+
 bool inline RecordWriter::writeRecordUnsafe(const ContextSwitch& record)
 {
     RecordTypeAndFlags token{RecordType::CONTEXT_SWITCH, 0};
@@ -175,6 +184,18 @@ bool inline RecordWriter::writeRecordUnsafe(const Segment& record)
 {
     RecordTypeAndFlags token{RecordType::SEGMENT, 0};
     return writeSimpleType(token) && writeSimpleType(record.vaddr) && writeVarint(record.memsz);
+}
+
+bool inline RecordWriter::writeRecordUnsafe(const CpuSampleRecord& record)
+{
+    RecordTypeAndFlags token{RecordType::CPU_SAMPLE, static_cast<unsigned char>(record.allocator)};
+    return writeSimpleType(token);
+}
+
+bool inline RecordWriter::writeRecordUnsafe(const NativeCpuSampleRecord& record)
+{
+    RecordTypeAndFlags token{RecordType::CPU_SAMPLE_WITH_NATIVE, static_cast<unsigned char>(record.allocator)};
+    return writeSimpleType(token) && writeIntegralDelta(&d_last.native_frame_id, record.native_frame_id);
 }
 
 bool inline RecordWriter::writeRecordUnsafe(const AllocationRecord& record)

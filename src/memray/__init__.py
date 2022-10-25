@@ -1,4 +1,5 @@
 from ._memray import AllocationRecord
+from ._memray import CpuSampleRecord
 from ._memray import AllocatorType
 from ._memray import Destination
 from ._memray import FileDestination
@@ -15,6 +16,7 @@ from ._version import __version__
 
 __all__ = [
     "AllocationRecord",
+    "CpuSampleRecord",
     "AllocatorType",
     "MemorySnapshot",
     "dump_all_records",

@@ -32,9 +32,18 @@ cdef extern from "records.h" namespace "memray::tracking_api":
        size_t n_allocations
        object toPythonObject()
 
+   cdef cppclass CpuSample:
+       Allocator allocator
+       size_t frame_index
+       size_t n_cpu_samples
+       object toPythonObject()
+
    struct MemoryRecord:
        unsigned long int ms_since_epoch
        size_t rss
+
+   struct CpuRecord:
+       unsigned long int ms_since_epoch
 
    struct MemorySnapshot:
        unsigned long int ms_since_epoch

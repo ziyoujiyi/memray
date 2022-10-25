@@ -1,4 +1,5 @@
 from _memray.records cimport Allocation
+from _memray.records cimport CpuSample
 from _memray.records cimport optional_frame_id_t
 from libc.stdint cimport uint64_t
 from libcpp cimport bool
@@ -11,18 +12,26 @@ cdef extern from "snapshot.h" namespace "memray::api":
     cdef struct HighWatermark:
         size_t index
         size_t peak_memory
+        size_t total_cpu_sampling_cnt
 
     cdef cppclass HighWatermarkFinder:
         void processAllocation(const Allocation&) except+
+        void processCpuSample(const CpuSample&) except+
         HighWatermark getHighWatermark()
         size_t getCurrentWatermark()
 
     cdef cppclass reduced_snapshot_map_t:
         pass
 
+    cdef cppclass reduced_cpu_snapshot_map_t:
+        pass
+
     cdef cppclass AbstractAggregator:
         void addAllocation(const Allocation&) except+
         reduced_snapshot_map_t getSnapshotAllocations(bool merge_threads) except+
+
+        void addCpuSample(const CpuSample&) except+
+        reduced_cpu_snapshot_map_t getSnapshotCpuSamples(bool merge_threads) except+
 
     cdef cppclass TemporaryAllocationsAggregator(AbstractAggregator):
         TemporaryAllocationsAggregator(size_t max_items)
@@ -50,3 +59,6 @@ cdef extern from "snapshot.h" namespace "memray::api":
 
     object Py_ListFromSnapshotAllocationRecords(const reduced_snapshot_map_t&) except+
     object Py_GetSnapshotAllocationRecords(const vector[Allocation]& all_records, size_t record_index, bool merge_threads) except+
+
+    object Py_ListFromSnapshotCpuSampleRecords(const reduced_cpu_snapshot_map_t&) except+
+    object Py_GetSnapshotCpuSampleRecords(const vector[CpuSample]& all_records, size_t record_index, bool merge_threads) except+

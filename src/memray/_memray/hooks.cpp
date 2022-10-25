@@ -105,31 +105,16 @@ ensureAllHooksAreValid()
 
 namespace memray::intercept {
 
-void* test_native_stack_trace(void* ctx, size_t size) {
-    PyMemAllocatorEx* alloc = (PyMemAllocatorEx*)ctx;
-    void* ptr = nullptr;
-    {
-        tracking_api::RecursionGuard guard;
-        ptr = alloc->malloc(alloc->ctx, size); // use SysMalloc
-    }
-    return ptr;
-}
-
 void*
 pymalloc_malloc(void* ctx, size_t size) noexcept
 {
-    /*
+    
     PyMemAllocatorEx* alloc = (PyMemAllocatorEx*)ctx;
     void* ptr = nullptr;
     {
         tracking_api::RecursionGuard guard;
-        ptr = alloc->malloc(alloc->ctx, size);  // use PyMemMalloc
+        ptr = alloc->malloc(alloc->ctx, size);  // use SysMalloc
     }
-    */
-    void* ptr = test_native_stack_trace(ctx, size);
-    static int py_malloc_sz;
-    py_malloc_sz += size;
-    MY_DEBUG("Entering intercept::pymalloc_malloc, py_malloc_total_size: %d, malloc_single_size: %d", py_malloc_sz, size);
     tracking_api::Tracker::trackAllocation(ptr, size, hooks::Allocator::PYMALLOC_MALLOC);
     return ptr;
 }
@@ -187,9 +172,6 @@ malloc(size_t size) noexcept
     assert(hooks::malloc);
 
     void* ptr = hooks::malloc(size);  // N6memray5hooks10SymbolHookIPDoFPvmEEE
-    static int malloc_sz;
-    malloc_sz += size;
-    MY_DEBUG("Entering intercept::malloc, malloc_total_size: %d, malloc_single_size: %d", malloc_sz, size);
     tracking_api::Tracker::trackAllocation(ptr, size, hooks::Allocator::MALLOC);
     return ptr;
 }
@@ -250,9 +232,6 @@ mmap64(void* addr, size_t length, int prot, int flags, int fd, off64_t offset) n
 {
     assert(hooks::mmap64);
     void* ptr = hooks::mmap64(addr, length, prot, flags, fd, offset);
-    static int mmap64_sz;
-    mmap64_sz += length;
-    MY_DEBUG("Entering intercept::mmap64, mmap64_total_size: %d, mmap64_signle_size: %d", mmap64_sz, length);
     tracking_api::Tracker::trackAllocation(ptr, length, hooks::Allocator::MMAP);
     return ptr;
 }

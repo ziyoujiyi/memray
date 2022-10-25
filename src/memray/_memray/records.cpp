@@ -53,6 +53,49 @@ Allocation::toPythonObject() const
 }
 
 PyObject*
+CpuSample::toPythonObject() const
+{
+    PyObject* tuple = PyTuple_New(8);
+    if (tuple == nullptr) {
+        return nullptr;
+    }
+
+#define __CHECK_ERROR(elem)                                                                             \
+    do {                                                                                                \
+        if (elem == nullptr) {                                                                          \
+            Py_DECREF(tuple);                                                                           \
+            return nullptr;                                                                             \
+        }                                                                                               \
+    } while (0)
+    PyObject* elem = PyLong_FromLong(tid);
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 0, elem);
+    elem = PyLong_FromUnsignedLong(address);
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 1, elem);
+    elem = PyLong_FromSize_t(size);
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 2, elem);
+    elem = PyLong_FromLong(static_cast<int>(allocator));
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 3, elem);
+    elem = PyLong_FromSize_t(frame_index);
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 4, elem);
+    elem = PyLong_FromSize_t(n_cpu_samples);
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 5, elem);
+    elem = PyLong_FromSize_t(native_frame_id);
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 6, elem);
+    elem = PyLong_FromSize_t(native_segment_generation);
+    __CHECK_ERROR(elem);
+    PyTuple_SET_ITEM(tuple, 7, elem);
+#undef __CHECK_ERROR
+    return tuple;
+}
+
+PyObject*
 Frame::toPythonObject(python_helpers::PyUnicode_Cache& pystring_cache) const
 {
     PyObject* pyfunction_name = pystring_cache.getUnicodeObject(function_name);

@@ -58,6 +58,8 @@ allocatorName(hooks::Allocator allocator)
             return "pymalloc_realloc";
         case hooks::Allocator::PYMALLOC_FREE:
             return "pymalloc_free";
+        case hooks::Allocator::CPU_SAMPLING:
+            return "cpu_sampling";
     }
 
     return nullptr;
@@ -270,6 +272,12 @@ RecordReader::parseAllocationRecord(AllocationRecord* record, unsigned int flags
 }
 
 bool
+RecordReader::parseCpuSampleRecord(CpuSampleRecord* record, unsigned int flags) {
+    record->allocator = static_cast<hooks::Allocator>(flags);
+    return true;
+}
+
+bool
 RecordReader::processAllocationRecord(const AllocationRecord& record)
 {
     d_latest_allocation.tid = d_last.thread_id;
@@ -289,12 +297,34 @@ RecordReader::processAllocationRecord(const AllocationRecord& record)
 }
 
 bool
+RecordReader::processCpuSampleRecord(const CpuSampleRecord& record) 
+{
+    d_latest_cpu_sample.tid = d_last.thread_id;  
+    d_latest_cpu_sample.native_frame_id = 0;
+    if (d_track_stacks) {
+        auto& stack = d_stack_traces[d_latest_cpu_sample.tid];
+        d_latest_cpu_sample.frame_index = stack.empty() ? 0 : stack.back();
+    } else {
+        d_latest_cpu_sample.frame_index = 0;
+    }
+    d_latest_cpu_sample.native_segment_generation = 0;
+    d_latest_cpu_sample.n_cpu_samples = 1;
+    return true;
+}
+
+bool
 RecordReader::parseNativeAllocationRecord(NativeAllocationRecord* record, unsigned int flags)
 {
     record->allocator = static_cast<hooks::Allocator>(flags);
 
     return readIntegralDelta(&d_last.data_pointer, &record->address) && readVarint(&record->size)
            && readIntegralDelta(&d_last.native_frame_id, &record->native_frame_id);
+}
+
+bool 
+RecordReader::parseNativeCpuSampleRecord(NativeCpuSampleRecord* record, unsigned int flags) {
+    record->allocator = static_cast<hooks::Allocator>(flags);
+    return readIntegralDelta(&d_last.native_frame_id, &record->native_frame_id);
 }
 
 bool
@@ -315,6 +345,24 @@ RecordReader::processNativeAllocationRecord(const NativeAllocationRecord& record
         d_latest_allocation.native_segment_generation = 0;
     }
     d_latest_allocation.n_allocations = 1;
+    return true;
+}
+
+bool
+RecordReader::processNativeCpuSampleRecord(const NativeCpuSampleRecord& record) 
+{
+    d_latest_cpu_sample.tid = d_last.thread_id;
+    if (d_track_stacks) {
+        d_latest_cpu_sample.native_frame_id = record.native_frame_id;
+        auto& stack = d_stack_traces[d_latest_cpu_sample.tid];
+        d_latest_cpu_sample.frame_index = stack.empty() ? 0 : stack.back();
+        d_latest_cpu_sample.native_segment_generation = d_symbol_resolver.currentSegmentGeneration();
+    } else {
+        d_latest_cpu_sample.native_frame_id = 0;
+        d_latest_cpu_sample.frame_index = 0;
+        d_latest_cpu_sample.native_segment_generation = 0;
+    }
+    d_latest_cpu_sample.n_cpu_samples = 1;
     return true;
 }
 
@@ -404,9 +452,26 @@ RecordReader::parseMemoryRecord(MemoryRecord* record)
 }
 
 bool
+RecordReader::parseCpuRecord(CpuRecord* record)
+{
+    if (!readVarint(&record->ms_since_epoch)) {
+        return false;
+    }
+    record->ms_since_epoch += d_header.stats.start_time;
+    return true;
+}
+
+bool
 RecordReader::processMemoryRecord(const MemoryRecord& record)
 {
     d_latest_memory_record = record;
+    return true;
+}
+
+bool
+RecordReader::processCpuRecord(const CpuRecord& record) 
+{
+    d_latest_cpu_record = record;  // no use
     return true;
 }
 
@@ -455,6 +520,15 @@ RecordReader::nextRecord()
                 }
                 return RecordResult::ALLOCATION_RECORD;
             } break;
+            case RecordType::CPU_SAMPLE: {
+                CpuSampleRecord record;
+                if (!parseCpuSampleRecord(&record, record_type_and_flags.flags)
+                    || !processCpuSampleRecord(record)) {
+                    if (d_input->is_open()) LOG(ERROR) << "Failed to process cpu sampling record";
+                    return RecordResult::ERROR;        
+                }
+                return RecordResult::CPU_SAMPLE_RECORD;
+            } break;
             case RecordType::ALLOCATION_WITH_NATIVE: {
                 NativeAllocationRecord record;
                 if (!parseNativeAllocationRecord(&record, record_type_and_flags.flags)
@@ -467,6 +541,14 @@ RecordReader::nextRecord()
                 }
                 return RecordResult::ALLOCATION_RECORD;
             } break;
+            case RecordType::CPU_SAMPLE_WITH_NATIVE: {
+                NativeCpuSampleRecord record;
+                if (!parseNativeCpuSampleRecord(&record, record_type_and_flags.flags)
+                || !processNativeCpuSampleRecord(record)) {
+                    if (d_input->is_open()) LOG(ERROR) << "Failed to process cpu sampling record with native info";
+                }
+                return RecordResult::CPU_SAMPLE_RECORD;
+            } break;
             case RecordType::MEMORY_RECORD: {
                 MemoryRecord record;
                 if (!parseMemoryRecord(&record) || !processMemoryRecord(record)) {
@@ -474,6 +556,14 @@ RecordReader::nextRecord()
                     return RecordResult::ERROR;
                 }
                 return RecordResult::MEMORY_RECORD;
+            } break;
+            case RecordType::CPU_RECORD: {
+                CpuRecord record;
+                if (!parseCpuRecord(&record) || !processCpuRecord(record)) {
+                    if (d_input->is_open()) LOG(ERROR) << "Failed to process cpu record";
+                    return RecordResult::ERROR;
+                }
+                return RecordResult::CPU_RECORD;
             } break;
             case RecordType::CONTEXT_SWITCH: {
                 thread_id_t tid;
@@ -611,7 +701,7 @@ RecordReader::Py_GetNativeStackFrame(FrameTree::index_t index, size_t generation
     if (list == nullptr) {
         return nullptr;
     }
-    MY_DEBUG("max_stacks: %lld", max_stacks);
+    //MY_DEBUG("max_stacks: %lld", max_stacks);
     while (current_index != 0 && stacks_obtained++ != max_stacks) {
         auto frame = d_native_frames[current_index - 1];
         current_index = frame.index;
@@ -619,9 +709,9 @@ RecordReader::Py_GetNativeStackFrame(FrameTree::index_t index, size_t generation
         if (!resolved_frames) {
             continue;
         }
-        MY_DEBUG("current_index: %d, stacks_obtained: %d, resolved_frames_size: %d", current_index, stacks_obtained, resolved_frames->frames().size());
+        //MY_DEBUG("current_index: %d, stacks_obtained: %d, resolved_frames_size: %d", current_index, stacks_obtained, resolved_frames->frames().size());
         for (auto& native_frame : resolved_frames->frames()) {
-            MY_DEBUG("native_frame - file: %s, line: %d, symbol: %s", native_frame.File().c_str(), native_frame.Line(), native_frame.Symbol().c_str());
+            //MY_DEBUG("native_frame - file: %s, line: %d, symbol: %s", native_frame.File().c_str(), native_frame.Line(), native_frame.Symbol().c_str());
             PyObject* pyframe = native_frame.toPythonObject(d_pystring_cache);
             if (pyframe == nullptr) {
                 return nullptr;
@@ -679,10 +769,22 @@ RecordReader::getLatestAllocation() const noexcept
     return d_latest_allocation;
 }
 
+CpuSample
+RecordReader::getLatestCpuSample() const noexcept
+{
+    return d_latest_cpu_sample;
+}
+
 MemoryRecord
 RecordReader::getLatestMemoryRecord() const noexcept
 {
-    return d_latest_memory_record;
+    return d_latest_memory_record;  // no use
+}
+
+CpuRecord
+RecordReader::getLatestCpuRecord() const noexcept
+{
+    return d_latest_cpu_record;
 }
 
 PyObject*
@@ -766,6 +868,25 @@ RecordReader::dumpAllRecords()
                        allocator,
                        record.native_frame_id);
             } break;
+            case RecordType::CPU_SAMPLE_WITH_NATIVE: {
+                printf("CPU_SAMPLE_WITH_NATIVE ");
+
+                NativeCpuSampleRecord record;
+                if (!parseNativeCpuSampleRecord(&record, record_type_and_flags.flags)) {
+                    Py_RETURN_NONE;
+                }
+
+                const char* cpuRecorder = allocatorName(record.allocator);
+
+                std::string unknownCpuRecorder;
+                if (!cpuRecorder) {
+                    unknownCpuRecorder = 
+                            "<unknown cpuRecorder " + std::to_string((int)record.allocator) + ">";
+                    cpuRecorder = unknownCpuRecorder.c_str();
+                }
+
+                printf("cpuRecorder=%s, native_frame_id=%zd\n", cpuRecorder, record.native_frame_id);
+            } break;
             case RecordType::ALLOCATION: {
                 printf("ALLOCATION ");
 
@@ -786,6 +907,23 @@ RecordReader::dumpAllRecords()
                        (void*)record.address,
                        record.size,
                        allocator);
+            } break;
+            case RecordType::CPU_SAMPLE: {
+                printf("CPU_SAMPLE ");
+
+                CpuSampleRecord record;
+                if (!parseCpuSampleRecord(&record, record_type_and_flags.flags)) {
+                    Py_RETURN_NONE;
+                }
+
+                const char* cpuRecorder = allocatorName(record.allocator);
+                std::string unknownCpuRecorder;
+                if (!cpuRecorder) {
+                    unknownCpuRecorder = 
+                            "<unknown cpu recorder " + std::to_string((int)record.allocator) + ">";
+                    cpuRecorder = unknownCpuRecorder.c_str();
+                }
+                printf("allocator=%s\n", cpuRecorder);
             } break;
             case RecordType::FRAME_PUSH: {
                 printf("FRAME_PUSH ");
@@ -882,6 +1020,16 @@ RecordReader::dumpAllRecords()
                 }
 
                 printf("time=%ld memory=%" PRIxPTR "\n", record.ms_since_epoch, record.rss);
+            } break;
+            case RecordType::CPU_RECORD: {
+                printf("CPU_RECORD ");
+
+                CpuRecord record;
+                if (!parseCpuRecord(&record)) {
+                    Py_RETURN_NONE;
+                }
+
+                printf("time=%ld" PRIxPTR "\n", record.ms_since_epoch);
             } break;
             case RecordType::CONTEXT_SWITCH: {
                 printf("CONTEXT_SWITCH ");

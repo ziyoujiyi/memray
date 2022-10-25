@@ -21,6 +21,7 @@ from rich.table import Column
 from rich.table import Table
 
 from memray import AllocationRecord
+from memray import CpuSampleRecord
 from memray._memray import size_fmt
 
 from ..commands.common import logger
@@ -128,6 +129,47 @@ class AllocationEntry:
     n_allocations: int
     thread_ids: Set[int]
 
+@dataclass
+class CpuSampleEntry:
+    n_cpu_samples: int
+    thread_ids: Set[int]
+
+
+def aggregate_cpu_samples(
+    cpu_samples: Iterable[CpuSampleRecord],
+    native_traces: Optional[bool] = False,
+) -> Dict[Location, CpuSampleEntry]:
+
+    processed_cpu_samples: DefaultDict[Location, CpuSampleEntry] = defaultdict(
+        lambda: CpuSampleEntry(n_cpu_samples=0, thread_ids=set())
+    )
+
+    for cpu_sample in cpu_samples:
+        stack_trace = list(
+            cpu_sample.hybrid_stack_trace()
+            if native_traces
+            else cpu_sample.stack_trace()
+        )
+        if not stack_trace:
+            frame = processed_cpu_samples[Location(function="???", file="???")]
+            frame.n_cpu_samples += cpu_sample.n_cpu_samples
+            frame.thread_ids.add(cpu_sample.tid)
+            continue
+        (function, file_name, _), *caller_frames = stack_trace  # current stack frame
+        location = Location(function=function, file=file_name)
+        processed_cpu_samples[location] = CpuSampleEntry(
+            n_cpu_samples=cpu_sample.n_cpu_samples,
+            thread_ids={cpu_sample.tid},
+        )
+
+        # Walk upwards and sum totals
+        for function, file_name, _ in caller_frames:  # caller stack frames(backtrace)
+            location = Location(function=function, file=file_name)
+            frame = processed_cpu_samples[location]
+            frame.n_cpu_samples += cpu_sample.n_cpu_samples
+            frame.thread_ids.add(cpu_sample.tid)
+    return processed_cpu_samples
+
 
 def aggregate_allocations(
     allocations: Iterable[AllocationRecord],
@@ -147,7 +189,6 @@ def aggregate_allocations(
     current_total = 0
     allocation_idx = 0
     for allocation in allocations:
-        logger.info("allocation: {}".format(allocation))
         if current_total >= memory_threshold:
             break
         current_total += allocation.size
@@ -158,7 +199,6 @@ def aggregate_allocations(
             else allocation.stack_trace()
         )
         allocation_idx += 1
-        logger.info("allocation_idx: {}, stack_trace: {}".format(allocation_idx, stack_trace))
         if not stack_trace:
             frame = processed_allocations[Location(function="???", file="???")]
             frame.total_memory += allocation.size
@@ -177,7 +217,6 @@ def aggregate_allocations(
 
         # Walk upwards and sum totals
         visited = set()
-        logger.info("caller_frames: {}".format(caller_frames))
         for function, file_name, _ in caller_frames:
             location = Location(function=function, file=file_name)
             frame = processed_allocations[location]
@@ -220,10 +259,12 @@ class TUI:
         self._thread_idx = 0
         self._seen_threads: Set[int] = set()
         self._threads: List[int] = self._DUMMY_THREAD_LIST
-        self.n_samples = 0
+        self.n_memory_samples = 0
+        self.n_cpu_samples = 0
         self.start = datetime.now()
         self._last_update = datetime.now()
         self._snapshot: Tuple[AllocationRecord, ...] = tuple()
+        self._cpu_snapshot: Tuple[CpuSampleRecord, ...] = tuple()
         self._current_memory_size = 0
         self._max_memory_seen = 0
         self._message = ""
@@ -271,7 +312,7 @@ class TUI:
             f"[b]Thread[/] {self._thread_idx + 1} of {len(self._threads)}",
         )
         metadata.add_row(
-            f"[b]Samples[/]: {self.n_samples}",
+            f"[b]Samples[/]: {self.n_memory_samples}",
             f"[b]Duration[/]: {(self._last_update - self.start).total_seconds()} seconds",
         )
 
@@ -311,6 +352,40 @@ class TUI:
         )
         heap_grid.add_row(bar)
         return heap_grid
+
+    def get_cpu_body(self, *, max_rows: Optional[int] = None) -> Table:
+        max_rows = max_rows or self._terminal_size
+        table = Table(
+            Column("Location", ratio=5),
+            Column("Samples Count", ratio=1, justify="right"),
+            expand=True,
+        )
+        sort_column = table.columns[self._sort_column_id]
+        sort_column.header = f"<{sort_column.header}>"
+
+        cpu_sample_entries = aggregate_cpu_samples(
+            self._cpu_snapshot, self._native
+        )
+
+        sorted_cpu_samples = sorted(
+            cpu_sample_entries.items(),
+            key=lambda item: getattr(  # type: ignore[no-any-return]
+                item[1], "n_cpu_samples"
+            ),
+            reverse=True,
+        )[:max_rows]     
+        for location, result in sorted_cpu_samples:
+            color_location = (
+                f"[bold magenta]{escape(location.function)}[/] at "
+                f"[cyan]{escape(location.file)}[/]"
+            )
+            n_cpu_samples_colors = _size_to_color(result.n_cpu_samples)
+            table.add_row(
+                color_location,
+                f"[{n_cpu_samples_colors}]{result.n_cpu_samples}",
+            )
+
+        return table
 
     def get_body(self, *, max_rows: Optional[int] = None) -> Table:
         max_rows = max_rows or self._terminal_size
@@ -396,14 +471,17 @@ class TUI:
                 self._threads = []
             self._threads.append(record.tid)
             self._seen_threads.add(record.tid)
-        self.n_samples += 1
+        self.n_memory_samples += 1
         self._last_update = datetime.now()
         self._current_memory_size = sum(record.size for record in self._snapshot)
         if self._current_memory_size > self._max_memory_seen:
             self._max_memory_seen = self._current_memory_size
             self.stream.reset_max(self._max_memory_seen)
         self.stream.add_value(self._current_memory_size)
-
+    
+    def update_cpu_snapshot(self, snapshot: Iterable[CpuSampleRecord]) -> None:
+        self._cpu_snapshot = tuple(snapshot)
+            
     def update_sort_key(self, col_number: int) -> None:
         self._sort_column_id = col_number
         self._sort_field_name = self.KEY_TO_COLUMN_NAME[col_number]

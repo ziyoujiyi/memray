@@ -54,6 +54,14 @@ class SummaryCommand:
             dest="temporary_allocation_threshold",
             const=1,
         )
+        alloc_type_group.add_argument(
+            "--cpu-profiler-switch",
+            action="store",
+            dest="cpu_profiler_switch",
+            help="default is on",
+            type=int,
+            default=0
+        )
 
     def run(self, args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         max_cols = SummaryReporter.N_COLUMNS
@@ -67,9 +75,12 @@ class SummaryCommand:
         reader = FileReader(os.fspath(args.results), report_progress=True)
         if reader.metadata.has_native_traces:
             warn_if_not_enough_symbols()
-        logger.info(args)
         try:
-            if args.temporary_allocation_threshold >= 0:
+            if args.cpu_profiler_switch:
+                snapshot = iter(
+                    reader.get_cpu_sample_records(merge_threads=True)
+                )
+            elif args.temporary_allocation_threshold >= 0:
                 snapshot = iter(
                     reader.get_temporary_allocation_records(
                         threshold=args.temporary_allocation_threshold,
@@ -85,8 +96,15 @@ class SummaryCommand:
                 f"Failed to parse allocation records in {result_path}\nReason: {e}",
                 exit_code=1,
             )
-        reporter = SummaryReporter.from_snapshot(
-            snapshot,
-            native=reader.metadata.has_native_traces,
-        )
-        reporter.render(sort_column=args.sort_column, max_rows=args.max_rows)
+        if args.cpu_profiler_switch:
+            reporter = SummaryReporter.from_cpu_snapshot(
+                snapshot,
+                native=reader.metadata.has_native_traces,
+            )
+            reporter.cpu_render(sort_column=args.sort_column, max_rows=args.max_rows)
+        else:
+            reporter = SummaryReporter.from_snapshot(
+                snapshot,
+                native=reader.metadata.has_native_traces,
+            )
+            reporter.render(sort_column=args.sort_column, max_rows=args.max_rows)

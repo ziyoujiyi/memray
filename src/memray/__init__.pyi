@@ -4,6 +4,7 @@ from memray._destination import SocketDestination as SocketDestination
 from memray._metadata import Metadata as Metadata
 
 from ._memray import AllocationRecord as AllocationRecord
+from ._memray import CpuSampleRecord as CpuSampleRecord
 from ._memray import AllocatorType as AllocatorType
 from ._memray import FileReader as FileReader
 from ._memray import MemorySnapshot as MemorySnapshot

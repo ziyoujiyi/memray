@@ -36,7 +36,9 @@ from _memray.snapshot cimport AllocationStatsAggregator
 from _memray.snapshot cimport HighWatermark
 from _memray.snapshot cimport HighWatermarkFinder
 from _memray.snapshot cimport Py_GetSnapshotAllocationRecords
+from _memray.snapshot cimport Py_GetSnapshotCpuSampleRecords
 from _memray.snapshot cimport Py_ListFromSnapshotAllocationRecords
+from _memray.snapshot cimport Py_ListFromSnapshotCpuSampleRecords
 from _memray.snapshot cimport SnapshotAllocationAggregator
 from _memray.snapshot cimport TemporaryAllocationsAggregator
 from _memray.socket_reader_thread cimport BackgroundSocketReader
@@ -113,6 +115,130 @@ def size_fmt(num, suffix='B'):
 # Memray core
 
 PYTHON_VERSION = (sys.version_info.major, sys.version_info.minor)
+
+@cython.freelist(1024)
+cdef class CpuSampleRecord:
+    cdef object _tuple
+    cdef object _stack_trace
+    cdef object _native_stack_trace
+    cdef shared_ptr[RecordReader] _reader
+
+    def __init__(self, record):
+        self._tuple = record
+        self._stack_trace = None
+
+    def __eq__(self, other):
+        cdef CpuSampleRecord _other
+        if isinstance(other, CpuSampleRecord):
+            _other = other
+            return self._tuple == _other._tuple
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self._tuple)
+
+    @property
+    def tid(self):
+        return self._tuple[0]
+
+    @property
+    def address(self):
+        return self._tuple[1]
+
+    @property
+    def size(self):
+        return self._tuple[2]
+
+    @property
+    def allocator(self):
+        return self._tuple[3]
+
+    @property
+    def stack_id(self):
+        return self._tuple[4]
+
+    @property
+    def n_cpu_samples(self):
+        return self._tuple[5]
+
+    @property
+    def thread_name(self):
+        if self.tid == -1:
+            return "merged thread"
+        assert self._reader.get() != NULL, "Cannot get thread name without reader."
+        cdef object name = self._reader.get().getThreadName(self.tid)
+        thread_id = hex(self.tid)
+        return f"{thread_id} ({name})" if name else f"{thread_id}"
+
+    def stack_trace(self, max_stacks=None):
+        assert self._reader.get() != NULL, "Cannot get stack trace without reader."
+        if self._stack_trace is None:
+            if self.allocator in (AllocatorType.FREE, AllocatorType.MUNMAP):
+                raise NotImplementedError("Stack traces for deallocations aren't captured.")
+
+            if max_stacks is None:
+                self._stack_trace = self._reader.get().Py_GetStackFrame(self._tuple[4])
+            else:
+                self._stack_trace = self._reader.get().Py_GetStackFrame(self._tuple[4], max_stacks)
+        return self._stack_trace
+
+    def native_stack_trace(self, max_stacks=None):
+        assert self._reader.get() != NULL, "Cannot get stack trace without reader."
+        if self._native_stack_trace is None:
+            if self.allocator in (AllocatorType.FREE, AllocatorType.MUNMAP):
+                raise NotImplementedError("Stack traces for deallocations aren't captured.")
+
+            if max_stacks is None:
+                self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
+                        self._tuple[6], self._tuple[7])
+            else:
+                self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
+                        self._tuple[6], self._tuple[7], max_stacks)
+            print("cpu frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
+        return self._native_stack_trace
+
+    cdef _is_eval_frame(self, object symbol):
+        return "_PyEval_EvalFrameDefault" in symbol
+
+    def hybrid_stack_trace(self, max_stacks=None):
+        cdef vector[unsigned char] is_entry_frame
+        cdef list python_stack
+        if max_stacks is None:
+            python_stack = self._reader.get().Py_GetStackFrameAndEntryInfo(
+                self._tuple[4], &is_entry_frame
+            )
+        else:
+            python_stack = self._reader.get().Py_GetStackFrameAndEntryInfo(
+                self._tuple[4], &is_entry_frame, max_stacks
+            )
+
+        native_stack = self.native_stack_trace(max_stacks)
+        print("cpu_native_stack: ", native_stack)
+
+        if not python_stack:
+            yield from native_stack
+            return
+
+        cdef size_t python_frame_index = 0
+        cdef size_t num_python_frames = len(python_stack)
+        for native_frame in native_stack:
+            if python_frame_index >= num_python_frames:
+                break
+            symbol = native_frame[0]
+            if self._is_eval_frame(symbol):
+                while python_frame_index < num_python_frames:
+                    python_frame = python_stack[python_frame_index]
+                    python_frame_index += 1
+                    yield python_frame
+                    if is_entry_frame[python_frame_index - 1]:
+                        break
+            else:
+                yield native_frame
+
+    def __repr__(self):
+        return (f"CpuSampleRecord<tid={hex(self.tid)}, address={hex(self.address)}, "
+                f"size={'N/A' if not self.size else size_fmt(self.size)}, allocator={self.allocator!r}, "
+                f"cpuSamples={self.n_cpu_samples}>")
 
 @cython.freelist(1024)
 cdef class AllocationRecord:
@@ -192,6 +318,7 @@ cdef class AllocationRecord:
             else:
                 self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
                         self._tuple[6], self._tuple[7], max_stacks)
+            print("allocation frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
         return self._native_stack_trace
 
     cdef _is_eval_frame(self, object symbol):
@@ -210,7 +337,7 @@ cdef class AllocationRecord:
             )
 
         native_stack = self.native_stack_trace(max_stacks)
-
+        print("allocation_native_stack: ", native_stack)
         if not python_stack:
             yield from native_stack
             return
@@ -336,6 +463,7 @@ cdef class Tracker:
         cdef cppstring command_line = " ".join(sys.argv)
         self._native_traces = native_traces
         self._memory_interval_ms = memory_interval_ms
+        #self._memory_interval_ms = 100   #TODO
         self._follow_fork = follow_fork
         self._trace_python_allocators = trace_python_allocators
 
@@ -570,15 +698,20 @@ cdef class FileReader:
                 if ret == RecordResult.RecordResultAllocationRecord:
                     finder.processAllocation(reader.getLatestAllocation())
                     progress_indicator.update(1)
+                elif ret == RecordResult.RecordResultCpuSamplingRecord:   
+                    finder.processCpuSample(reader.getLatestCpuSample())
+                    #
                 elif ret == RecordResult.RecordResultMemoryRecord:
                     memory_record = reader.getLatestMemoryRecord()
-                    self._memory_snapshots.push_back(
+                    self._memory_snapshots.push_back(   # no use
                         _MemorySnapshot(
                             memory_record.ms_since_epoch,
                             memory_record.rss,
                             finder.getCurrentWatermark(),
                         )
                     )
+                elif ret == RecordResult.RecordResultCpuRecord:
+                    pass
                 else:
                     break
         self._high_watermark = finder.getHighWatermark()
@@ -606,6 +739,40 @@ cdef class FileReader:
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.close()
+    
+    def _aggregate_cpu_samples(self, size_t records_to_process, bool merge_threads):
+        cdef unique_ptr[AbstractAggregator] the_aggregator
+        the_aggregator.reset(new SnapshotAllocationAggregator())
+        cdef AbstractAggregator* aggregator = the_aggregator.get()
+
+        cdef shared_ptr[RecordReader] reader_sp = make_shared[RecordReader](
+            unique_ptr[FileSource](new FileSource(self._path))
+        )
+        cdef RecordReader* reader = reader_sp.get()
+        print("cpu_records_to_process: ", records_to_process)
+        while records_to_process > 0:
+            PyErr_CheckSignals()
+            ret = reader.nextRecord()
+            if ret == RecordResult.RecordResultCpuSamplingRecord:
+                aggregator.addCpuSample(reader.getLatestCpuSample())
+                records_to_process -= 1
+            elif ret == RecordResult.RecordResultCpuRecord:
+                pass
+            elif ret == RecordResult.RecordResultMemoryRecord:
+                pass
+            elif ret == RecordResult.RecordResultAllocationRecord:
+                pass    
+            else:
+                break
+
+        for elem in Py_ListFromSnapshotCpuSampleRecords(
+            aggregator.getSnapshotCpuSamples(merge_threads)
+        ):
+            sample = CpuSampleRecord(elem)
+            (<CpuSampleRecord> sample)._reader = reader_sp
+            yield sample
+
+        reader.close()
 
     def _aggregate_allocations(self, size_t records_to_process, bool merge_threads,
                                size_t temporary_buffer_size=0):
@@ -636,7 +803,7 @@ cdef class FileReader:
                 if ret == RecordResult.RecordResultAllocationRecord:
                     aggregator.addAllocation(reader.getLatestAllocation())
                     records_to_process -= 1
-                    progress_indicator.update(1)
+                    progress_indicator.update(1)  
                 elif ret == RecordResult.RecordResultMemoryRecord:
                     pass
                 else:
@@ -657,9 +824,14 @@ cdef class FileReader:
         cdef size_t max_records = self._high_watermark.index + 1
         yield from self._aggregate_allocations(max_records, merge_threads)
 
+    def get_cpu_sample_records(self, merge_threads=True):
+        self._ensure_not_closed()
+        cdef size_t max_records = self._high_watermark.total_cpu_sampling_cnt
+        yield from self._aggregate_cpu_samples(max_records, merge_threads)
+
     def get_leaked_allocation_records(self, merge_threads=True):
         self._ensure_not_closed()
-        cdef size_t max_records = self._header["stats"]["n_allocations"]
+        cdef size_t max_records = self._header["stats"]["n_allocations"] + 1
         yield from self._aggregate_allocations(max_records, merge_threads)
 
     def get_temporary_allocation_records(self, merge_threads=True, threshold=1):
@@ -671,7 +843,7 @@ cdef class FileReader:
             temporary_buffer_size=threshold + 1,
         )
 
-    def get_allocation_records(self):
+    def get_allocation_records(self):  # no use
         self._ensure_not_closed()
         cdef shared_ptr[RecordReader] reader_sp = make_shared[RecordReader](
             unique_ptr[FileSource](new FileSource(self._path))

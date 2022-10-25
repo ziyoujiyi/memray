@@ -33,6 +33,8 @@ class RecordReader
     enum class RecordResult {
         ALLOCATION_RECORD,
         MEMORY_RECORD,
+        CPU_SAMPLE_RECORD,
+        CPU_RECORD,
         ERROR,
         END_OF_FILE,
     };
@@ -57,7 +59,9 @@ class RecordReader
     PyObject* dumpAllRecords();
     std::string getThreadName(thread_id_t tid);
     Allocation getLatestAllocation() const noexcept;
+    CpuSample getLatestCpuSample() const noexcept;
     MemoryRecord getLatestMemoryRecord() const noexcept;
+    CpuRecord getLatestCpuRecord() const noexcept;
 
   private:
     // Aliases
@@ -89,7 +93,9 @@ class RecordReader
     DeltaEncodedFields d_last;
     std::unordered_map<thread_id_t, std::string> d_thread_names;
     Allocation d_latest_allocation;
+    CpuSample d_latest_cpu_sample;
     MemoryRecord d_latest_memory_record;
+    CpuRecord d_latest_cpu_record;
 
     // Methods
     [[nodiscard]] bool parseFramePush(FramePush* record);
@@ -104,8 +110,14 @@ class RecordReader
     [[nodiscard]] bool parseNativeFrameIndex(UnresolvedNativeFrame* frame);
     [[nodiscard]] bool processNativeFrameIndex(const UnresolvedNativeFrame& frame);
 
+    [[nodiscard]] bool parseCpuSampleRecord(CpuSampleRecord* record, unsigned int flags);
+    [[nodiscard]] bool processCpuSampleRecord(const CpuSampleRecord& record);
+
     [[nodiscard]] bool parseAllocationRecord(AllocationRecord* record, unsigned int flags);
     [[nodiscard]] bool processAllocationRecord(const AllocationRecord& record);
+
+    [[nodiscard]] bool parseNativeCpuSampleRecord(NativeCpuSampleRecord* record, unsigned int flags);
+    [[nodiscard]] bool processNativeCpuSampleRecord(const NativeCpuSampleRecord& record);
 
     [[nodiscard]] bool parseNativeAllocationRecord(NativeAllocationRecord* record, unsigned int flags);
     [[nodiscard]] bool processNativeAllocationRecord(const NativeAllocationRecord& record);
@@ -121,6 +133,9 @@ class RecordReader
 
     [[nodiscard]] bool parseThreadRecord(std::string* name);
     [[nodiscard]] bool processThreadRecord(const std::string& name);
+
+    [[nodiscard]] bool parseCpuRecord(CpuRecord* record);
+    [[nodiscard]] bool processCpuRecord(const CpuRecord& record);
 
     [[nodiscard]] bool parseMemoryRecord(MemoryRecord* record);
     [[nodiscard]] bool processMemoryRecord(const MemoryRecord& record);

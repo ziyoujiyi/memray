@@ -228,6 +228,16 @@ class Tracker
     static PyObject* destroyTracker();
     static Tracker* getTracker();
 
+    // Cpu tracking interface
+    __attribute__((always_inline)) inline static void
+    trackCpu(int signo)
+    {
+        Tracker* tracker = getTracker();
+        if (tracker) {
+            tracker->trackCpuImpl(hooks::Allocator::CPU_SAMPLING);
+        }
+    }
+
     // Allocation tracking interface
     __attribute__((always_inline)) inline static void
     trackAllocation(void* ptr, size_t size, hooks::Allocator func)
@@ -295,6 +305,9 @@ class Tracker
         // Data members
         std::shared_ptr<RecordWriter> d_writer;
         bool d_stop{false};
+        std::atomic_int d_cpu_sampling_cnt{0};
+        unsigned int d_cpu_to_memory_sampling_ratio{1};  // default value
+        unsigned int d_cpu_profiler_interval;
         unsigned int d_memory_interval;
         std::mutex d_mutex;
         std::condition_variable d_cv;
@@ -324,6 +337,7 @@ class Tracker
     // Methods
     frame_id_t registerFrame(const RawFrame& frame);
 
+    void trackCpuImpl(hooks::Allocator func);
     void trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func);
     void trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func);
     void invalidate_module_cache_impl();

@@ -110,6 +110,7 @@ void
 ensureAllHooksAreValid();
 
 enum class Allocator : unsigned char {
+    CPU_SAMPLING = 0,  // TODO, tricky
     MALLOC = 1,
     FREE = 2,
     CALLOC = 3,

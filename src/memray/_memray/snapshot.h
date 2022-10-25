@@ -44,6 +44,9 @@ struct index_thread_pair_hash
 using allocations_t = std::vector<Allocation>;
 using reduced_snapshot_map_t = std::unordered_map<LocationKey, Allocation, index_thread_pair_hash>;
 
+using cpuSamples_t = std::vector<CpuSample>;
+using reduced_cpu_snapshot_map_t = std::unordered_map<LocationKey, CpuSample, index_thread_pair_hash>;
+
 struct Interval
 {
     Interval(uintptr_t begin, uintptr_t end);
@@ -168,6 +171,10 @@ class AbstractAggregator
   public:
     virtual void addAllocation(const Allocation& allocation) = 0;
     virtual reduced_snapshot_map_t getSnapshotAllocations(bool merge_threads) = 0;
+
+    virtual void addCpuSample(const CpuSample& cpuSample) = 0;
+    virtual reduced_cpu_snapshot_map_t getSnapshotCpuSamples(bool merge_threads) = 0;
+
     virtual ~AbstractAggregator() = default;
 };
 
@@ -178,9 +185,15 @@ class SnapshotAllocationAggregator : public AbstractAggregator
     IntervalTree<Allocation> d_interval_tree;
     std::unordered_map<uintptr_t, Allocation> d_ptr_to_allocation{};
 
+    std::vector<CpuSample> d_ptr_to_cpuSample{};
+
   public:
     void addAllocation(const Allocation& allocation) override;
     reduced_snapshot_map_t getSnapshotAllocations(bool merge_threads) override;
+
+    void addCpuSample(const CpuSample& cpuSample) override;
+    reduced_cpu_snapshot_map_t getSnapshotCpuSamples(bool merge_threads) override;
+
 };
 
 class TemporaryAllocationsAggregator : public AbstractAggregator
@@ -194,15 +207,21 @@ class TemporaryAllocationsAggregator : public AbstractAggregator
     TemporaryAllocationsAggregator(size_t max_items);
     void addAllocation(const Allocation& allocation) override;
     reduced_snapshot_map_t getSnapshotAllocations(bool merge_threads) override;
+
+    void addCpuSample(const CpuSample& cpuSample) {}
+    reduced_cpu_snapshot_map_t getSnapshotCpuSamples(bool merge_threads) { return {}; }
 };
 
 PyObject*
 Py_ListFromSnapshotAllocationRecords(const reduced_snapshot_map_t& stack_to_allocation);
+PyObject*
+Py_ListFromSnapshotCpuSampleRecords(const reduced_cpu_snapshot_map_t& stack_to_cpuSample);
 
 struct HighWatermark
 {
     size_t index{0};
     size_t peak_memory{0};
+    size_t total_cpu_sampling_cnt{0};
 };
 
 class HighWatermarkFinder
@@ -210,6 +229,7 @@ class HighWatermarkFinder
   public:
     HighWatermarkFinder() = default;
     void processAllocation(const Allocation& allocation);
+    void processCpuSample(const CpuSample& cpuSample);
     HighWatermark getHighWatermark() const noexcept;
     size_t getCurrentWatermark() const noexcept;
 
@@ -222,6 +242,7 @@ class HighWatermarkFinder
     HighWatermark d_last_high_water_mark;
     size_t d_current_memory{0};
     size_t d_allocations_seen{0};
+    size_t d_cpuSamples_seen{0};
     std::unordered_map<uintptr_t, size_t> d_ptr_to_allocation_size{};
     IntervalTree<Allocation> d_mmap_intervals;
 };
@@ -307,6 +328,12 @@ class AllocationStatsAggregator
 PyObject*
 Py_GetSnapshotAllocationRecords(
         const allocations_t& all_records,
+        size_t record_index,
+        bool merge_threads);
+
+PyObject*
+Py_GetSnapshotCpuSampleRecords(
+        const cpuSamples_t& all_records,
         size_t record_index,
         bool merge_threads);
 

@@ -35,6 +35,10 @@ enum class RecordType : unsigned char {
     THREAD_RECORD = 10,
     MEMORY_RECORD = 11,
     CONTEXT_SWITCH = 12,
+
+    CPU_RECORD = 13,
+    CPU_SAMPLE = 14,
+    CPU_SAMPLE_WITH_NATIVE = 15
 };
 
 enum class OtherRecordType : unsigned char {
@@ -70,6 +74,8 @@ struct TrackerStats
     size_t n_frames{0};
     millis_t start_time{};
     millis_t end_time{};
+    millis_t cpu_profiler_start_time{};
+    millis_t cpu_profiler_end_time{};
 };
 
 enum PythonAllocatorType : unsigned char {
@@ -96,6 +102,11 @@ struct MemoryRecord
     size_t rss;
 };
 
+struct CpuRecord
+{
+    unsigned long int ms_since_epoch;
+};
+
 struct MemorySnapshot
 {
     unsigned long int ms_since_epoch;
@@ -103,11 +114,22 @@ struct MemorySnapshot
     size_t heap;
 };
 
+struct CpuSampleRecord
+{
+    hooks::Allocator allocator;
+};
+
 struct AllocationRecord
 {
     uintptr_t address;
     size_t size;
     hooks::Allocator allocator;
+};
+
+struct NativeCpuSampleRecord
+{
+    hooks::Allocator allocator;
+    frame_id_t native_frame_id{0};
 };
 
 struct NativeAllocationRecord
@@ -128,6 +150,20 @@ struct Allocation
     size_t frame_index{0};
     size_t native_segment_generation{0};
     size_t n_allocations{1};
+
+    PyObject* toPythonObject() const;
+};
+
+struct CpuSample
+{
+    thread_id_t tid;
+    uintptr_t address{0};
+    size_t size{0};
+    hooks::Allocator allocator{hooks::Allocator::CPU_SAMPLING};
+    frame_id_t native_frame_id{0};
+    size_t frame_index{0};
+    size_t native_segment_generation{0};
+    size_t n_cpu_samples{1};
 
     PyObject* toPythonObject() const;
 };

@@ -548,12 +548,25 @@ Tracker::Tracker(
     if (d_trace_python_allocators) {
         registerPymallocHooks();
     }
+
+    tracking_api::Tracker::activate();
+
+    signal(SIGALRM, trackCpu);
+    struct itimerval tick;
+    memset(&tick, 0, sizeof(tick));
+    tick.it_value.tv_sec = 0;
+    tick.it_value.tv_usec = 10000;
+    tick.it_interval.tv_sec = 0;
+    tick.it_interval.tv_usec = 10000; // us
+    int ret = setitimer(ITIMER_REAL, &tick, NULL);
+    if (ret) {
+        LOG(ERROR) << "set timer failed: " << ret;
+    }
+
     d_background_thread = std::make_unique<BackgroundThread>(d_writer, memory_interval);
     d_background_thread->start();
 
     d_patcher.overwrite_symbols();
-
-    tracking_api::Tracker::activate();
 }
 
 Tracker::~Tracker()
@@ -581,6 +594,8 @@ Tracker::BackgroundThread::BackgroundThread(
 : d_writer(std::move(record_writer))
 , d_memory_interval(memory_interval)
 {
+    d_cpu_profiler_interval = memory_interval;  // ms, TODO: can be set by constructor
+    d_cpu_to_memory_sampling_ratio = d_memory_interval / d_cpu_profiler_interval;
 #ifdef __linux__
     d_procs_statm.open("/proc/self/statm");
     if (!d_procs_statm) {
@@ -639,20 +654,35 @@ Tracker::BackgroundThread::start()
         while (true) {
             {
                 std::unique_lock<std::mutex> lock(d_mutex);
-                d_cv.wait_for(lock, d_memory_interval * 1ms, [this]() { return d_stop; });
+                d_cv.wait_for(lock, d_cpu_profiler_interval * 1ms, [this]() { return d_stop; });
                 if (d_stop) {
                     break;
                 }
             }
-            size_t rss = getRSS();
-            if (rss == 0) {
-                Tracker::deactivate();
-                break;
-            }
-            if (!d_writer->writeRecord(MemoryRecord{timeElapsed(), rss})) {
-                std::cerr << "Failed to write output, deactivating tracking" << std::endl;
-                Tracker::deactivate();
-                break;
+
+            {
+                //raise(SIGPROF);
+                d_cpu_sampling_cnt++;
+                int ret = d_writer->writeRecord(CpuRecord{timeElapsed()});  // no use ?
+                if (!ret) {
+                    std::cerr << "Failed to write CpuRecord, deactivating tracking" << std::endl;
+                    Tracker::deactivate();
+                    break;
+                }
+            } 
+
+            if (d_cpu_sampling_cnt == d_cpu_to_memory_sampling_ratio) {
+                size_t rss = getRSS();
+                if (rss == 0) {
+                    Tracker::deactivate();
+                    break;
+                }
+                if (!d_writer->writeRecord(MemoryRecord{timeElapsed(), rss})) {  // no use ?
+                    std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+                    Tracker::deactivate();
+                    break;
+                }
+                d_cpu_sampling_cnt = 0;
             }
         }
     });
@@ -666,6 +696,7 @@ Tracker::BackgroundThread::stop()
         d_stop = true;
         d_cv.notify_one();
     }
+
     if (d_thread.joinable()) {
         try {
             d_thread.join();
@@ -732,16 +763,43 @@ Tracker::childFork()
 }
 
 void
-Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
+Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
     if (RecursionGuard::isActive || !Tracker::isActive()) {
-        bool a = RecursionGuard::isActive;
-        bool b = Tracker::isActive();
-        MY_DEBUG("trackAllocationImpl failed ... RecursionGuard::isActive: %d, Tracker::isActive: %d, sz: ", a, b, size);
         return;
     }
     RecursionGuard guard;
-    MY_DEBUG("Entering trackAllocationImpl: hooks::Allocator type - %d, single_size - %d", (int)func, size);
+    PythonStackTracker::get().emitPendingPushesAndPops();
+    if (d_unwind_native_frames) {
+        NativeTrace trace;
+        frame_id_t native_index = 0;
+        // Skip the internal frames so we don't need to filter them later.
+        if (trace.fill(2)) {
+            native_index = d_native_trace_tree.getTraceIndex(trace, [&](frame_id_t ip, uint32_t index) {
+                return d_writer->writeRecord(UnresolvedNativeFrame{ip, index});
+            });
+        }
+        NativeCpuSampleRecord record{func, native_index};
+        if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
+            std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+            deactivate();
+        }
+    } else {
+        CpuSampleRecord record{func};
+        if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
+            std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+            deactivate();
+        }
+    }
+}
+
+void
+Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
+{
+    if (RecursionGuard::isActive || !Tracker::isActive()) {
+        return;
+    }
+    RecursionGuard guard;
     PythonStackTracker::get().emitPendingPushesAndPops();
 
     if (d_unwind_native_frames) {
@@ -967,12 +1025,12 @@ Tracker::createTracker(
 
     MY_DEBUG("Tracker ins created && is activated");
     void* ptr = hooks::malloc(99999999);  // use SysMalloc
-    void* ptr2 = malloc(8888888);  // use SysMalloc
+    void* ptr2 = malloc(8888888);  // use SysMalloc ? not sure
     void* ptr3 = intercept::malloc(6666666);
-    MY_DEBUG("Tracker malloc type: %d", &hooks::malloc);
-    MY_DEBUG("Tracker malloc type: %d", &malloc);
-    MY_DEBUG("Tracker malloc type: %d", intercept::malloc);
-    if (ptr) {
+    MY_DEBUG("Tracker malloc type: %llu", &hooks::malloc);
+    MY_DEBUG("Tracker malloc type: %llu", &malloc);
+    MY_DEBUG("Tracker malloc type: %llu", intercept::malloc);
+    if (ptr && ptr2 && ptr3) {
         MY_DEBUG("test native malloc succeed");
     } else {
         MY_DEBUG("test native malloc failed");

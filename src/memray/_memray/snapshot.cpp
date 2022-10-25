@@ -58,8 +58,17 @@ Interval::rightIntersects(const Interval& other) const
 }
 
 void
+SnapshotAllocationAggregator::addCpuSample(const CpuSample& cpuSample)
+{
+    //MY_DEBUG("add cpu_sample - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_cpu_samples: %d", cpuSample.tid, cpuSample.native_frame_id, cpuSample.native_segment_generation, cpuSample.n_cpu_samples);
+    d_ptr_to_cpuSample.emplace_back(cpuSample);
+    return;
+}
+
+void
 SnapshotAllocationAggregator::addAllocation(const Allocation& allocation)
 {
+    //MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id, allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
     switch (hooks::allocatorKind(allocation.allocator)) {
         case hooks::AllocatorKind::SIMPLE_ALLOCATOR: {
             d_ptr_to_allocation[allocation.address] = allocation;
@@ -81,7 +90,26 @@ SnapshotAllocationAggregator::addAllocation(const Allocation& allocation)
             break;
         }
     }
-    d_index++;
+    d_index++;  // no use ?
+}
+
+reduced_cpu_snapshot_map_t
+SnapshotAllocationAggregator::getSnapshotCpuSamples(bool merge_threads)
+{
+    reduced_cpu_snapshot_map_t stack_to_cpuSample {};
+    
+    for (const auto& record : d_ptr_to_cpuSample) {
+        const thread_id_t thread_id = merge_threads ? NO_THREAD_INFO : record.tid;
+        auto loc_key = LocationKey{record.frame_index, record.native_frame_id, thread_id};
+        auto sample_it = stack_to_cpuSample.find(loc_key);
+        if (sample_it == stack_to_cpuSample.end()) {
+            stack_to_cpuSample.insert(sample_it, std::pair(loc_key, record));
+        } else {
+            sample_it->second.n_cpu_samples += 1;
+        }
+    }
+
+    return stack_to_cpuSample;
 }
 
 reduced_snapshot_map_t
@@ -214,6 +242,20 @@ reduceSnapshotAllocations(const allocations_t& records, size_t snapshot_index, b
     return aggregator.getSnapshotAllocations(merge_threads);
 }
 
+static reduced_cpu_snapshot_map_t
+reduceSnapshotCpuSamples(const cpuSamples_t& records, size_t snapshot_index, bool merge_threads)
+{
+    assert(snapshot_index < records.size());
+
+    SnapshotAllocationAggregator aggregator;
+
+    std::for_each(records.cbegin(), records.cbegin() + snapshot_index + 1, [&](auto& record) {
+        aggregator.addCpuSample(record);
+    });
+
+    return aggregator.getSnapshotCpuSamples(merge_threads);
+}
+
 void
 HighWatermarkFinder::updatePeak(size_t index) noexcept
 {
@@ -221,6 +263,14 @@ HighWatermarkFinder::updatePeak(size_t index) noexcept
         d_last_high_water_mark.index = index;
         d_last_high_water_mark.peak_memory = d_current_memory;
     }
+}
+
+void
+HighWatermarkFinder::processCpuSample(const CpuSample& cpuSample)
+{
+    size_t index = d_cpuSamples_seen++;
+    d_last_high_water_mark.total_cpu_sampling_cnt = index;
+    return;
 }
 
 void
@@ -321,6 +371,26 @@ Py_ListFromSnapshotAllocationRecords(const reduced_snapshot_map_t& stack_to_allo
 }
 
 PyObject*
+Py_ListFromSnapshotCpuSampleRecords(const reduced_cpu_snapshot_map_t& stack_to_cpuSample)
+{
+    PyObject* list = PyList_New(stack_to_cpuSample.size());
+    if (list == nullptr) {
+        return nullptr;
+    }
+    size_t list_index = 0;
+    for (const auto& it : stack_to_cpuSample) {
+        const auto& record = it.second;
+        PyObject* pyrecord = record.toPythonObject();
+        if (pyrecord == nullptr) {
+            Py_DECREF(list);
+            return nullptr;
+        }
+        PyList_SET_ITEM(list, list_index++, pyrecord);
+    }
+    return list;
+}
+
+PyObject*
 Py_GetSnapshotAllocationRecords(
         const allocations_t& all_records,
         size_t record_index,
@@ -331,6 +401,19 @@ Py_GetSnapshotAllocationRecords(
     }
     const auto stack_to_allocation = reduceSnapshotAllocations(all_records, record_index, merge_threads);
     return Py_ListFromSnapshotAllocationRecords(stack_to_allocation);
+}
+
+PyObject*
+Py_GetSnapshotCpuSampleRecords(
+        const cpuSamples_t& all_records,
+        size_t record_index,
+        bool merge_threads)
+{
+    if (all_records.empty()) {
+        return PyList_New(0);
+    }
+    const auto stack_to_cpuSample = reduceSnapshotCpuSamples(all_records, record_index, merge_threads);
+    return Py_ListFromSnapshotCpuSampleRecords(stack_to_cpuSample);
 }
 
 }  // namespace memray::api
