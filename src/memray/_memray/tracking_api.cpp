@@ -551,7 +551,9 @@ Tracker::Tracker(
 
     tracking_api::Tracker::activate();
 
-    signal(SIGALRM, trackCpu);
+    auto old_handler = signal(SIGALRM, trackCpu);
+    assert(old_handler == SIG_DFL);
+    // signal(SIGALRM, old_handler);
     struct itimerval tick;
     memset(&tick, 0, sizeof(tick));
     tick.it_value.tv_sec = 0;

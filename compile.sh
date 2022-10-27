@@ -10,12 +10,13 @@ Firstly, please ensure it is in gsim env.
    - npm config set registry http://registry.npm.taobao.org
    - npm install --save-dev webpack
    - export PATH=~/nodeenv/node-v18.12.0-linux-x64/node_modules/.bin:$PATH
-   #if you update package.json and package-loc.json, please excute 'npm install' in memray(repo) root dir before webpack
+   #if you update package.json or package-loc.json, please excute 'npm install' in memray(repo) root dir before webpack
    - cd ~/memray && webpack
 
 2. Compile develop version
    - vim ~/.local/lib/python3.7/site-packages/easy-install.pth && add '/home/bwang/memray/src'
    - vim ~/.local/lib/python3.7/site-packages/memray.egg-link && add '/home/bwang/memray/src'
+   - ensure 'TEST_BUILD = True' in setup.py
    - sh compile.sh
 
 3. How to use?
@@ -27,6 +28,7 @@ Firstly, please ensure it is in gsim env.
     #memray flamegraph --cpu-profiler-switch 1 output.bin -f -o yy.html
 
 4. Develop guides
+   - branch name: 'py37_adapt'
    - python log tools: logger, c/c++ log tools: MY_DEBUG
 COMMENT
 
