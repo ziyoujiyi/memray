@@ -58,7 +58,7 @@ class SummaryCommand:
             "--cpu-profiler-switch",
             action="store",
             dest="cpu_profiler_switch",
-            help="default is on",
+            help="default is off",
             type=int,
             default=0
         )
@@ -80,7 +80,7 @@ class SummaryCommand:
                 snapshot = iter(
                     reader.get_cpu_sample_records(merge_threads=True)
                 )
-            elif args.temporary_allocation_threshold >= 0:
+            elif args.temporary_allocation_threshold >= 0:  # default value is -1
                 snapshot = iter(
                     reader.get_temporary_allocation_records(
                         threshold=args.temporary_allocation_threshold,

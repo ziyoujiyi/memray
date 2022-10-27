@@ -26,7 +26,9 @@ from _memray.record_reader cimport RecordResult
 from _memray.record_writer cimport RecordWriter
 from _memray.records cimport Allocation as _Allocation
 from _memray.records cimport MemoryRecord
+from _memray.records cimport CpuRecord
 from _memray.records cimport MemorySnapshot as _MemorySnapshot
+from _memray.records cimport CpuSnapshot as _CpuSnapshot
 from _memray.sink cimport FileSink
 from _memray.sink cimport NullSink
 from _memray.sink cimport Sink
@@ -66,6 +68,7 @@ from ._destination import Destination
 from ._destination import FileDestination
 from ._destination import SocketDestination
 from ._metadata import Metadata
+from ._metadata import CpuMetadata
 from ._stats import Stats
 
 
@@ -365,6 +368,7 @@ cdef class AllocationRecord:
 
 
 MemorySnapshot = collections.namedtuple("MemorySnapshot", "time rss heap")
+CpuSnapshot = collections.namedtuple("CpuSnapshot", "time")
 
 cdef class ProfileFunctionGuard:
     def __dealloc__(self):
@@ -556,6 +560,17 @@ cdef _create_metadata(header, peak_memory):
         has_native_traces=header["native_traces"],
     )
 
+cdef _create_cpu_metadata(header):
+    stats = header["stats"]
+    return CpuMetadata(
+        cpu_profiler_start_time=millis_to_dt(stats["cpu_profiler_start_time"]),
+        cpu_profiler_end_time=millis_to_dt(stats["cpu_profiler_end_time"]),
+        total_cpu_samples=stats["n_cpu_samples"],
+        total_frames=stats["n_frames"],
+        command_line=header["command_line"],
+        pid=header["pid"],
+        has_native_traces=header["native_traces"]
+    )
 
 cdef class ProgressIndicator:
     cdef bool _report_progress
@@ -651,6 +666,7 @@ cdef class FileReader:
 
     cdef object _file
     cdef vector[_MemorySnapshot] _memory_snapshots
+    cdef vector[_CpuSnapshot] _cpu_snapshots
     cdef HighWatermark _high_watermark
     cdef object _header
     cdef bool _report_progress
@@ -678,19 +694,24 @@ cdef class FileReader:
         stats = self._header["stats"]
 
         n_memory_snapshots_approx = 2048
+        n_cpu_snapshots_approx = 2048
         if 0 < stats["start_time"] < stats["end_time"]:
             n_memory_snapshots_approx = (stats["end_time"] - stats["start_time"]) / 10
+            n_cpu_snapshots_approx = (stats["end_time"] - stats["start_time"]) / 10
         self._memory_snapshots.reserve(n_memory_snapshots_approx)
+        self._cpu_snapshots.reserve(n_cpu_snapshots_approx)
 
         cdef object total = stats['n_allocations'] or None
         cdef HighWatermarkFinder finder
 
         cdef ProgressIndicator progress_indicator = ProgressIndicator(
             "Calculating high watermark",
-            total=total,
+            total=total,                                # TODO, for n_cpu_samples
             report_progress=self._report_progress
         )
         cdef MemoryRecord memory_record
+        cdef CpuRecord cpu_record
+
         with progress_indicator:
             while True:
                 PyErr_CheckSignals()
@@ -700,10 +721,10 @@ cdef class FileReader:
                     progress_indicator.update(1)
                 elif ret == RecordResult.RecordResultCpuSamplingRecord:   
                     finder.processCpuSample(reader.getLatestCpuSample())
-                    #
+                    ##
                 elif ret == RecordResult.RecordResultMemoryRecord:
                     memory_record = reader.getLatestMemoryRecord()
-                    self._memory_snapshots.push_back(   # no use
+                    self._memory_snapshots.push_back(   # use in flamegraph
                         _MemorySnapshot(
                             memory_record.ms_since_epoch,
                             memory_record.rss,
@@ -711,11 +732,18 @@ cdef class FileReader:
                         )
                     )
                 elif ret == RecordResult.RecordResultCpuRecord:
-                    pass
+                    cpu_record = reader.getLatestCpuRecord()
+                    self._cpu_snapshots.push_back(   # use in cpuflamegraph
+                        _CpuSnapshot(
+                            cpu_record.ms_since_epoch
+                        )
+                    )
                 else:
                     break
         self._high_watermark = finder.getHighWatermark()
-        stats["n_allocations"] = progress_indicator.num_processed
+        print("before allocations:", stats["n_allocations"])
+        stats["n_allocations"] = progress_indicator.num_processed  # is the same, why change ?
+        print("after allocations:", stats["n_allocations"])
 
     def __dealloc__(self):
         self.close()
@@ -789,7 +817,7 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-
+        print("memory_records_to_process: ", records_to_process)
         cdef ProgressIndicator progress_indicator = ProgressIndicator(
             "Processing allocation records",
             total=records_to_process,
@@ -805,6 +833,10 @@ cdef class FileReader:
                     records_to_process -= 1
                     progress_indicator.update(1)  
                 elif ret == RecordResult.RecordResultMemoryRecord:
+                    pass
+                elif ret == RecordResult.RecordResultCpuSamplingRecord:
+                    pass
+                elif ret == RecordResult.RecordResultCpuRecord:
                     pass
                 else:
                     break
@@ -868,9 +900,17 @@ cdef class FileReader:
         for record in self._memory_snapshots:
             yield MemorySnapshot(record.ms_since_epoch, record.rss, record.heap)
 
+    def get_cpu_snapshots(self):
+        for record in self._cpu_snapshots:
+            yield CpuSnapshot(record.ms_since_epoch)
+
     @property
     def metadata(self):
         return _create_metadata(self._header, self._high_watermark.peak_memory)
+
+    @property
+    def cpumetadata(self):
+        return _create_cpu_metadata(self._header)
 
 
 def compute_statistics(
@@ -933,6 +973,7 @@ def compute_statistics(
     cdef uint64_t peak_memory = aggregator.peakBytesAllocated()
     return Stats(
         metadata=_create_metadata(header, peak_memory),
+        cpumetadata=_create_cpu_metadata(header),
         total_num_allocations=aggregator.totalAllocations(),
         total_memory_allocated=aggregator.totalBytesAllocated(),
         peak_memory_allocated=peak_memory,

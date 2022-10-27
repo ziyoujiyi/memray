@@ -28,9 +28,9 @@ class SummaryReporter:
 
     @classmethod
     def from_cpu_snapshot(
-        cls, cpuSamples: Iterable[CpuSampleRecord], native: bool = False
+        cls, cpu_samples: Iterable[CpuSampleRecord], native: bool = False
     ) -> "SummaryReporter":
-        return cls([], cpuSamples, native=native)
+        return cls([], cpu_samples, native=native)
 
     def render(
         self,

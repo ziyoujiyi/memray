@@ -71,6 +71,7 @@ static_assert(sizeof(RecordTypeAndFlags) == 1);
 struct TrackerStats
 {
     size_t n_allocations{0};
+    size_t n_cpu_samples{0};
     size_t n_frames{0};
     millis_t start_time{};
     millis_t end_time{};
@@ -112,6 +113,11 @@ struct MemorySnapshot
     unsigned long int ms_since_epoch;
     size_t rss;
     size_t heap;
+};
+
+struct CpuSnapshot
+{
+    unsigned long int ms_since_epoch;
 };
 
 struct CpuSampleRecord

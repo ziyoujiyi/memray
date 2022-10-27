@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 
 from ._metadata import Metadata
+from ._metadata import CpuMetadata
 
 
 @dataclass
 class Stats:
     metadata: Metadata
+    cpumetedata: CpuMetadata
     total_num_allocations: int
     total_memory_allocated: int
     peak_memory_allocated: int

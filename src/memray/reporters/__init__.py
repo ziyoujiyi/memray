@@ -1,6 +1,7 @@
 from typing import TextIO
 
 from memray import Metadata
+from memray import CpuMetadata
 
 try:
     from typing import Protocol
@@ -15,5 +16,13 @@ class BaseReporter(Protocol):
         metadata: Metadata,
         show_memory_leaks: bool,
         merge_threads: bool,
+    ) -> None:
+        ...
+    
+    def cpu_render(  # TODO
+        self,
+        outfile: TextIO,
+        metadata: CpuMetadata,
+        merge_threads: bool
     ) -> None:
         ...

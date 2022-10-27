@@ -188,12 +188,14 @@ bool inline RecordWriter::writeRecordUnsafe(const Segment& record)
 
 bool inline RecordWriter::writeRecordUnsafe(const CpuSampleRecord& record)
 {
+    d_stats.n_cpu_samples += 1;
     RecordTypeAndFlags token{RecordType::CPU_SAMPLE, static_cast<unsigned char>(record.allocator)};
     return writeSimpleType(token);
 }
 
 bool inline RecordWriter::writeRecordUnsafe(const NativeCpuSampleRecord& record)
 {
+    d_stats.n_cpu_samples += 1;
     RecordTypeAndFlags token{RecordType::CPU_SAMPLE_WITH_NATIVE, static_cast<unsigned char>(record.allocator)};
     return writeSimpleType(token) && writeIntegralDelta(&d_last.native_frame_id, record.native_frame_id);
 }

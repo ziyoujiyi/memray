@@ -14,9 +14,12 @@ cdef extern from "records.h" namespace "memray::tracking_api":
 
    struct TrackerStats:
        size_t n_allocations
+       size_t n_cpu_samples
        size_t n_frames
        long long start_time
        long long end_time
+       long long cpu_profiler_start_time
+       long long cpu_profiler_end_time
 
    struct HeaderRecord:
        int version
@@ -49,6 +52,9 @@ cdef extern from "records.h" namespace "memray::tracking_api":
        unsigned long int ms_since_epoch
        size_t rss
        size_t heap
+
+   struct CpuSnapshot:
+       unsigned long int ms_since_epoch
 
 
 cdef extern from "<optional>":

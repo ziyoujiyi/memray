@@ -70,10 +70,87 @@ export function initMemoryGraph(memory_records) {
   });
 }
 
+export function initCpuGraph(cpu_records) {
+  const time = cpu_records.map((a) => new Date(a[0]));
+  const resident_size = cpu_records.map((a) => a[1]);
+  const size = cpu_records.map((a) => a[2]);
+
+  var resident_size_plot = {
+    x: time,
+    y: resident_size,
+    mode: "lines",
+    name: "Resident size",
+  };
+
+  var heap_size_plot = {
+    x: time,
+    y: size,
+    mode: "lines",
+    name: "Heap size",
+  };
+
+  var data = [resident_size_plot, heap_size_plot];
+
+  var layout = {
+    xaxis: {
+      title: {
+        text: "Time",
+      },
+    },
+    yaxis: {
+      title: {
+        text: "Memory Size",
+      },
+      tickformat: ".4~s",
+      exponentformat: "B",
+      ticksuffix: "B",
+    },
+  };
+
+  var layout_small = {
+    height: 40,
+    margin: {
+      l: 0,
+      r: 0,
+      b: 0,
+      t: 0,
+      pad: 4,
+    },
+    plot_bgcolor: "#343a40", // this matches the color of bg-dark in our navbar
+    yaxis: {
+      tickformat: ".4~s",
+      exponentformat: "B",
+      ticksuffix: "B",
+    },
+    showlegend: false,
+  };
+  var config = {
+    responsive: true,
+  };
+  var config_small = {
+    responsive: true,
+    displayModeBar: false,
+  };
+
+  Plotly.newPlot("cpuGraph", data, layout, config);
+  Plotly.newPlot("smallCpuGraph", data, layout_small, config_small);
+
+  document.getElementById("smallCpuGraph").onclick(() => {
+    resizeCpuGraph();
+  });
+}
+
 export function resizeMemoryGraph() {
   setTimeout(() => {
     Plotly.Plots.resize("memoryGraph");
     Plotly.Plots.resize("smallMemoryGraph");
+  }, 100);
+}
+
+export function resizeCpuGraph() {
+  setTimeout(() => {
+    Plotly.Plots.resize("cpuGraph");
+    Plotly.Plots.resize("smallCpuGraph");
   }, 100);
 }
 
@@ -120,6 +197,21 @@ export function makeTooltipString(data, totalSize, merge_threads) {
   const plural = data.n_allocations > 1 ? "s" : "";
   const allocations_label = `${data.n_allocations} allocation${plural}`;
   let displayString = `${location}<br>${totalSize} total<br>${allocations_label}`;
+  if (merge_threads === false) {
+    displayString = displayString.concat(`<br>Thread ID: ${data.thread_id}`);
+  }
+  return displayString;
+}
+
+export function makeCpuTooltipString(data, totalCount, merge_threads) {
+  let location = "unknown location";
+  if (data.location !== undefined) {
+    location = `File ${data.location[1]}, line ${data.location[2]} in ${data.location[0]}`;
+  }
+
+  const plural = data.n_cpu_samples > 1 ? "s" : "";
+  const cpu_samples_label = `${data.n_cpu_samples} sample${plural}`;
+  let displayString = `${location}<br>${cpu_samples_label}`;
   if (merge_threads === false) {
     displayString = displayString.concat(`<br>Thread ID: ${data.thread_id}`);
   }
@@ -205,6 +297,21 @@ export function sumAllocations(data) {
 
   let sum = (result, node) => {
     result.n_allocations += node.n_allocations;
+    result.value += node.value;
+    return result;
+  };
+
+  return _.reduce(data, sum, initial);
+}
+
+export function sumCpuSamples(data) {
+  let initial = {
+    n_cpu_samples: 0,
+    value: 0,
+  };
+
+  let sum = (result, node) => {
+    result.n_cpu_samples += node.n_cpu_samples;
     result.value += node.value;
     return result;
   };

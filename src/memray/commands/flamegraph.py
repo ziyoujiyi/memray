@@ -12,8 +12,8 @@ class FlamegraphCommand(HighWatermarkCommand):
 
     def __init__(self) -> None:
         super().__init__(
-            reporter_factory=cast(ReporterFactory, FlameGraphReporter.from_snapshot),
-            reporter_name="flamegraph",
+            reporter_factory=[cast(ReporterFactory, FlameGraphReporter.from_snapshot), cast(ReporterFactory, FlameGraphReporter.from_cpu_snapshot)],
+            reporter_name=["flamegraph", "cpuflamegraph"]
         )
 
     def prepare_parser(self, parser: argparse.ArgumentParser) -> None:
@@ -62,7 +62,14 @@ class FlamegraphCommand(HighWatermarkCommand):
             dest="temporary_allocation_threshold",
             const=1,
         )
-
+        alloc_type_group.add_argument(
+            "--cpu-profiler-switch",
+            action="store",
+            dest="cpu_profiler_switch",
+            help="default is off",
+            type=int,
+            default=0
+        )
         parser.add_argument(
             "--split-threads",
             help="Do not merge allocations across threads",

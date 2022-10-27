@@ -3,10 +3,12 @@ from dataclasses import dataclass
 from ._memray import AllocatorType
 from ._memray import PythonStackElement
 from ._metadata import Metadata
+from ._metadata import CpuMetadata
 
 @dataclass
 class Stats:
     metadata: Metadata
+    cpumetadata: CpuMetadata
     total_num_allocations: int
     total_memory_allocated: int
     peak_memory_allocated: int

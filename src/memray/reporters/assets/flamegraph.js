@@ -229,7 +229,7 @@ function drawChart(chart_data) {
     // make each row a little taller
     .cellHeight(20)
     // don't show elements that are less than 5px wide
-    .minFrameSize(2)
+    .minFrameSize(2)                     
     // set our custom handlers
     .setColorMapper(memrayColorMapper)
     .onClick(onClick)

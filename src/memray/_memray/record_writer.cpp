@@ -37,7 +37,7 @@ RecordWriter::RecordWriter(
         const std::string& command_line,
         bool native_traces)
 : d_sink(std::move(sink))
-, d_stats({0, 0, duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count()})
+, d_stats({0, 0, 0, duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count(), 0, duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count()})  // too easy to occur initialize error here
 {
     d_header = HeaderRecord{
             "",
@@ -64,6 +64,7 @@ RecordWriter::writeHeader(bool seek_to_start)
     }
 
     d_stats.end_time = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    d_stats.cpu_profiler_end_time = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
     d_header.stats = d_stats;
     if (!writeSimpleType(d_header.magic) or !writeSimpleType(d_header.version)
         or !writeSimpleType(d_header.native_traces) or !writeSimpleType(d_header.stats)

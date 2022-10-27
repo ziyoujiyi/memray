@@ -5,6 +5,7 @@ module.exports = {
   mode: "production",
   entry: {
     flamegraph: "./src/memray/reporters/assets/flamegraph.js",
+    cpuflamegraph: "./src/memray/reporters/assets/cpuflamegraph.js",
     table: "./src/memray/reporters/assets/table.js",
   },
   output: {

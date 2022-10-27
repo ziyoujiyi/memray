@@ -471,7 +471,7 @@ RecordReader::processMemoryRecord(const MemoryRecord& record)
 bool
 RecordReader::processCpuRecord(const CpuRecord& record) 
 {
-    d_latest_cpu_record = record;  // no use
+    d_latest_cpu_record = record; 
     return true;
 }
 
@@ -778,7 +778,7 @@ RecordReader::getLatestCpuSample() const noexcept
 MemoryRecord
 RecordReader::getLatestMemoryRecord() const noexcept
 {
-    return d_latest_memory_record;  // no use
+    return d_latest_memory_record;  // use in flamegraph
 }
 
 CpuRecord
@@ -806,16 +806,19 @@ RecordReader::dumpAllRecords()
             break;
     }
     printf("HEADER magic=%.*s version=%d native_traces=%s"
-           " n_allocations=%zd n_frames=%zd start_time=%lld end_time=%lld"
+           " n_allocations=%zd n_cpu_samples=%lld n_frames=%zd start_time=%lld end_time=%lld cpu_profiler_start_time%lld cpu_profiler_end_time%lld"
            " pid=%d command_line=%s python_allocator=%s\n",
            (int)sizeof(d_header.magic),
            d_header.magic,
            d_header.version,
            d_header.native_traces ? "true" : "false",
            d_header.stats.n_allocations,
+           d_header.stats.n_cpu_samples,
            d_header.stats.n_frames,
            d_header.stats.start_time,
+           d_header.stats.cpu_profiler_start_time,
            d_header.stats.end_time,
+           d_header.stats.cpu_profiler_end_time,
            d_header.pid,
            d_header.command_line.c_str(),
            python_allocator.c_str());
