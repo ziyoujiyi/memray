@@ -197,7 +197,6 @@ cdef class CpuSampleRecord:
             else:
                 self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
                         self._tuple[6], self._tuple[7], max_stacks)
-            print("cpu frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
         return self._native_stack_trace
 
     cdef _is_eval_frame(self, object symbol):
@@ -215,8 +214,9 @@ cdef class CpuSampleRecord:
                 self._tuple[4], &is_entry_frame, max_stacks
             )
 
+        #print("cpu_python_stack: ", python_stack)
         native_stack = self.native_stack_trace(max_stacks)
-        print("cpu_native_stack: ", native_stack)
+        #print("cpu_native_stack: ", native_stack)
 
         if not python_stack:
             yield from native_stack
@@ -282,7 +282,7 @@ cdef class AllocationRecord:
 
     @property
     def stack_id(self):
-        return self._tuple[4]
+        return self._tuple[4]    # please refer to "/home/bwang/memray/src/memray/_memray/records.cpp: PyObject* Allocation::toPythonObject() const"
 
     @property
     def n_allocations(self):
@@ -321,7 +321,7 @@ cdef class AllocationRecord:
             else:
                 self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
                         self._tuple[6], self._tuple[7], max_stacks)
-            print("allocation frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
+            #print("allocation frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
         return self._native_stack_trace
 
     cdef _is_eval_frame(self, object symbol):
@@ -338,9 +338,9 @@ cdef class AllocationRecord:
             python_stack = self._reader.get().Py_GetStackFrameAndEntryInfo(
                 self._tuple[4], &is_entry_frame, max_stacks
             )
-
+        #print("allocation_python_stack: ", python_stack)
         native_stack = self.native_stack_trace(max_stacks)
-        print("allocation_native_stack: ", native_stack)
+        #print("allocation_native_stack: ", native_stack)
         if not python_stack:
             yield from native_stack
             return
@@ -741,9 +741,9 @@ cdef class FileReader:
                 else:
                     break
         self._high_watermark = finder.getHighWatermark()
-        print("before allocations:", stats["n_allocations"])
+        #print("before allocations:", stats["n_allocations"])
         stats["n_allocations"] = progress_indicator.num_processed  # is the same, why change ?
-        print("after allocations:", stats["n_allocations"])
+        #print("after allocations:", stats["n_allocations"])
 
     def __dealloc__(self):
         self.close()
@@ -777,7 +777,7 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-        print("cpu_records_to_process: ", records_to_process)
+        #print("cpu_records_to_process: ", records_to_process)
         while records_to_process > 0:
             PyErr_CheckSignals()
             ret = reader.nextRecord()
@@ -817,7 +817,7 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-        print("memory_records_to_process: ", records_to_process)
+        #print("memory_records_to_process: ", records_to_process)
         cdef ProgressIndicator progress_indicator = ProgressIndicator(
             "Processing allocation records",
             total=records_to_process,

@@ -147,7 +147,7 @@ class NativeTrace
 #ifdef __linux__
             size = unw_backtrace((void**)d_data.data(), MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man
 #elif defined(__APPLE__)
-            size = ::backtrace((void**)d_data.data(), MAX_SIZE);
+            size = ::backtrace((void**)d_data.data(), MAX_SIZE);    // the first element is the innermost function address
 #else
             return 0;
 #endif
