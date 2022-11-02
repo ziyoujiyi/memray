@@ -134,20 +134,12 @@ begin_tracking_greenlets();
 void
 handle_greenlet_switch(PyObject* from, PyObject* to);
 
+#define NATIVE_TRACE_MAX_SIZE 1024
+
 class NativeTrace
 {
   public:
     using ip_t = frame_id_t;
-
-    NativeTrace()
-    {
-        hooks::MEMORY_TRACE_SWITCH = false;
-        d_data.resize(MAX_SIZE);
-    };
-
-    ~NativeTrace() {
-        hooks::MEMORY_TRACE_SWITCH = true;
-    }
 
     auto begin() const
     {
@@ -168,22 +160,14 @@ class NativeTrace
     __attribute__((always_inline)) inline bool fill(size_t skip)
     {
         size_t size;
-        while (true) {
-#ifdef __linux__
-            size = unw_backtrace((void**)d_data.data(), MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man  https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
-#elif defined(__APPLE__)
-            size = ::backtrace((void**)d_data.data(), MAX_SIZE);    // the first element is the innermost function address, size <= MAX_SIZE
-#else
-            return 0;
-#endif
-            if (size < MAX_SIZE) {
-                break;
-            }
-            MAX_SIZE = MAX_SIZE * 2;
-            d_data.resize(MAX_SIZE);
+
+        size = unw_backtrace((void**)d_data.data(), NATIVE_TRACE_MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man  https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
+        if (size == NATIVE_TRACE_MAX_SIZE) {
+            MY_DEBUG("error! NATIVE_TRACE_MAX_SIZE is small");
         }
-        if (size > 32) {
-            skip = size - 32;
+
+        if (size > 64) {
+            skip = size - 64;
         } else {
             skip = 0;
         }
@@ -219,28 +203,15 @@ class NativeTrace
     }
 
   private:
-    MEMRAY_FAST_TLS static thread_local size_t MAX_SIZE;
-
-  private:
     size_t d_size = 0;
     size_t d_skip = 0;
-    std::vector<ip_t> d_data;
+    std::array<ip_t, NATIVE_TRACE_MAX_SIZE> d_data;
 };
 
 class CpuNativeTrace
 {
   public:
     using ip_t = frame_id_t;
-
-    CpuNativeTrace()
-    {
-        hooks::MEMORY_TRACE_SWITCH = false;
-        //d_data.resize(MAX_SIZE);
-    };
-
-    ~CpuNativeTrace() {
-        hooks::MEMORY_TRACE_SWITCH = true;
-    }
     
     auto begin() const
     {
@@ -261,20 +232,11 @@ class CpuNativeTrace
     __attribute__((always_inline)) inline bool fill(size_t skip)
     {
         size_t size;
-        while (true) {
-#ifdef __linux__
-            size = unw_backtrace((void**)d_data.data(), MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man  https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
-#elif defined(__APPLE__)
-            size = ::backtrace((void**)d_data.data(), MAX_SIZE);    // the first element is the innermost function address
-#else
-            return 0;
-#endif
-            if (size < MAX_SIZE) {
-                break;
-            }
-            break;
-            //MAX_SIZE = MAX_SIZE * 2;
-            //d_data.resize(MAX_SIZE);
+
+        size = unw_backtrace((void**)d_data.data(), NATIVE_TRACE_MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man  https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
+
+        if (size == NATIVE_TRACE_MAX_SIZE) {
+            MY_DEBUG("error! NATIVE_TRACE_MAX_SIZE is small");
         }
         if (size > 32) {
             skip = size - 32;
@@ -313,13 +275,9 @@ class CpuNativeTrace
     }
 
   private:
-    MEMRAY_FAST_TLS static thread_local size_t MAX_SIZE;
-
-  private:
     size_t d_size = 0;
     size_t d_skip = 0;
-    //std::vector<ip_t> d_data;
-    std::array<ip_t, 1024> d_data;
+    std::array<ip_t, NATIVE_TRACE_MAX_SIZE> d_data;
 };
 
 /**
@@ -472,6 +430,12 @@ class Tracker
     void trackCpuImpl(hooks::Allocator func);
     void trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func);
     void trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func);
+    static inline void startTrace() {
+        hooks::MEMORY_TRACE_SWITCH = true;
+    }
+    static inline void stopTrace() {
+        hooks::MEMORY_TRACE_SWITCH = false;
+    }
     void invalidate_module_cache_impl();
     void updateModuleCacheImpl();
     void registerThreadNameImpl(const char* name);

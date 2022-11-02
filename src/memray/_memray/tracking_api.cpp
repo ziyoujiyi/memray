@@ -400,9 +400,6 @@ std::atomic<bool> Tracker::d_active = false;
 std::unique_ptr<Tracker> Tracker::d_instance_owner;
 std::atomic<Tracker*> Tracker::d_instance = nullptr;
 
-MEMRAY_FAST_TLS thread_local size_t NativeTrace::MAX_SIZE{128};
-MEMRAY_FAST_TLS thread_local size_t CpuNativeTrace::MAX_SIZE{256};
-
 std::vector<PythonStackTracker::LazilyEmittedFrame>
 PythonStackTracker::pythonFrameToStack(PyFrameObject* current_frame)
 {
@@ -786,14 +783,10 @@ Tracker::childFork()
 void
 Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
-    static size_t blocked_cpu_sample = 0;
     if (!Tracker::isActive()) {
-        if (++blocked_cpu_sample % 100 == 0) {
-            MY_DEBUG("blocked_cpu_sample: %lld", blocked_cpu_sample);
-        }
         return;
     }
-    
+    stopTrace();
     //PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
         CpuNativeTrace trace;
@@ -810,8 +803,8 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
         if (++cpu_sample_record_cnt % 100 == 0) {
             MY_DEBUG("cpu_sample_record_cnt: %lld", cpu_sample_record_cnt);
         }
-        NativeCpuSampleRecord record{func, native_index};
         /*
+        NativeCpuSampleRecord record{func, native_index};
         if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;
             deactivate();
@@ -824,6 +817,7 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
             deactivate();
         }
     }
+    startTrace();
 }
 
 void
@@ -837,6 +831,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
         return;
     }
     RecursionGuard guard;
+    stopTrace();
     PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
         NativeTrace trace;
@@ -863,6 +858,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
             deactivate();
         }
     }
+    startTrace();
 }
 
 void
@@ -872,12 +868,13 @@ Tracker::trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func)
         return;
     }
     RecursionGuard guard;
-
+    stopTrace();
     AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
     if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
         std::cerr << "Failed to write output, deactivating tracking" << std::endl;
         deactivate();
     }
+    startTrace();
 }
 
 void

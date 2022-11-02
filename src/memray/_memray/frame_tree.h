@@ -23,8 +23,7 @@ class FrameTree
     template<typename T>
     size_t getTraceIndex(const T& stack_trace, const tracecallback_t& callback)
     {
-        //std::lock_guard<std::mutex> lock(d_mutex); 
-        std::lock_guard<SpinMutex> lock(d_spin_mutex);
+        std::lock_guard<std::mutex> lock(d_mutex); 
         index_t index = 0;
         for (const auto& frame : stack_trace) {
             index = getTraceIndexUnsafe(index, frame, callback);
@@ -34,8 +33,7 @@ class FrameTree
 
     size_t getTraceIndex(index_t parent_index, frame_id_t frame)
     {
-        //std::lock_guard<std::mutex> lock(d_mutex);
-        std::lock_guard<SpinMutex> lock(d_spin_mutex);
+        std::lock_guard<std::mutex> lock(d_mutex);
         return getTraceIndexUnsafe(parent_index, frame, tracecallback_t());
     }
 
