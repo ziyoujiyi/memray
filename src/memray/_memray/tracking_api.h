@@ -59,6 +59,26 @@ struct RecursionGuard
     MEMRAY_FAST_TLS static thread_local bool isActive;
 };
 
+
+template <typename T>
+class NewSTLAllocator : public std::allocator<T> {
+public:
+    template <typename U>
+    struct rebind {
+        typedef NewSTLAllocator<U> other;
+    };
+
+public:
+    T* allocate(size_t n, const void* hint = 0) {
+        return (T*)hooks::malloc(n * sizeof(T));
+    }
+
+    void deallocate(T* ptr, size_t n) {
+        hooks::free(ptr);
+    }
+};
+
+
 // Trace function interface
 
 /**
@@ -121,8 +141,13 @@ class NativeTrace
 
     NativeTrace()
     {
+        hooks::MEMORY_TRACE_SWITCH = false;
         d_data.resize(MAX_SIZE);
     };
+
+    ~NativeTrace() {
+        hooks::MEMORY_TRACE_SWITCH = true;
+    }
 
     auto begin() const
     {
@@ -145,18 +170,22 @@ class NativeTrace
         size_t size;
         while (true) {
 #ifdef __linux__
-            size = unw_backtrace((void**)d_data.data(), MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man
+            size = unw_backtrace((void**)d_data.data(), MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man  https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
 #elif defined(__APPLE__)
-            size = ::backtrace((void**)d_data.data(), MAX_SIZE);    // the first element is the innermost function address
+            size = ::backtrace((void**)d_data.data(), MAX_SIZE);    // the first element is the innermost function address, size <= MAX_SIZE
 #else
             return 0;
 #endif
             if (size < MAX_SIZE) {
                 break;
             }
-
             MAX_SIZE = MAX_SIZE * 2;
             d_data.resize(MAX_SIZE);
+        }
+        if (size > 32) {
+            skip = size - 32;
+        } else {
+            skip = 0;
         }
         d_size = size > skip ? size - skip : 0;
         d_skip = skip;
@@ -198,6 +227,101 @@ class NativeTrace
     std::vector<ip_t> d_data;
 };
 
+class CpuNativeTrace
+{
+  public:
+    using ip_t = frame_id_t;
+
+    CpuNativeTrace()
+    {
+        hooks::MEMORY_TRACE_SWITCH = false;
+        //d_data.resize(MAX_SIZE);
+    };
+
+    ~CpuNativeTrace() {
+        hooks::MEMORY_TRACE_SWITCH = true;
+    }
+    
+    auto begin() const
+    {
+        return std::reverse_iterator(d_data.begin() + d_skip + d_size);
+    }
+    auto end() const
+    {
+        return std::reverse_iterator(d_data.begin() + d_skip);
+    }
+    ip_t operator[](size_t i) const
+    {
+        return d_data[d_skip + d_size - 1 - i];
+    }
+    int size() const
+    {
+        return d_size;
+    }
+    __attribute__((always_inline)) inline bool fill(size_t skip)
+    {
+        size_t size;
+        while (true) {
+#ifdef __linux__
+            size = unw_backtrace((void**)d_data.data(), MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man  https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
+#elif defined(__APPLE__)
+            size = ::backtrace((void**)d_data.data(), MAX_SIZE);    // the first element is the innermost function address
+#else
+            return 0;
+#endif
+            if (size < MAX_SIZE) {
+                break;
+            }
+            break;
+            //MAX_SIZE = MAX_SIZE * 2;
+            //d_data.resize(MAX_SIZE);
+        }
+        if (size > 32) {
+            skip = size - 32;
+        } else {
+            skip = 0;
+        }
+        d_size = size > skip ? size - skip : 0;
+        d_skip = skip;
+        return d_size > 0;
+    }
+
+    static void setup()
+    {
+#ifdef __linux__
+        // configure libunwind for better speed
+        if (unw_set_caching_policy(unw_local_addr_space, UNW_CACHE_PER_THREAD)) {
+            fprintf(stderr, "WARNING: Failed to enable per-thread libunwind caching.\n");
+        }
+#    if (UNW_VERSION_MAJOR > 1 && UNW_VERSION_MINOR >= 3)
+        if (unw_set_cache_size(unw_local_addr_space, 1024, 0)) {
+            fprintf(stderr, "WARNING: Failed to set libunwind cache size.\n");
+        }
+#    endif
+#else
+        return;
+#endif
+    }
+
+    static inline void flushCache()
+    {
+#ifdef __linux__
+        unw_flush_cache(unw_local_addr_space, 0, 0);
+#else
+        return;
+#endif
+    }
+
+  private:
+    MEMRAY_FAST_TLS static thread_local size_t MAX_SIZE;
+
+  private:
+    size_t d_size = 0;
+    size_t d_skip = 0;
+    //std::vector<ip_t> d_data;
+    std::array<ip_t, 1024> d_data;
+};
+
 /**
  * Singleton managing all the global state and functionality of the tracing mechanism
  *
@@ -232,10 +356,18 @@ class Tracker
     __attribute__((always_inline)) inline static void
     trackCpu(int signo)
     {
-        Tracker* tracker = getTracker();
-        if (tracker) {
-            tracker->trackCpuImpl(hooks::Allocator::CPU_SAMPLING);
+        //static size_t num = 0; 
+        switch(signo) {
+            case SIGALRM:
+                Tracker* tracker = getTracker();
+                if (tracker) {
+                    tracker->trackCpuImpl(hooks::Allocator::CPU_SAMPLING);
+                }
+                break;
         }
+        //if (++num == 10000) {
+        //    kill(getpid(), SIGKILL);
+        //}
     }
 
     // Allocation tracking interface

@@ -13,7 +13,7 @@ from memray import MemorySnapshot
 from memray import CpuSnapshot
 from memray import Metadata
 from memray import CpuMetadata
-from memray.reporters.frame_tools import StackFrame
+from memray.reporters.frame_tools import StackFrame, is_frame_boring
 from memray.reporters.frame_tools import is_cpython_internal
 from memray.reporters.frame_tools import is_frame_interesting
 from memray.reporters.templates import render_report
@@ -28,7 +28,7 @@ def with_converted_children_dict(node: Dict[str, Any]) -> Dict[str, Any]:
         the_node = stack.pop()
         the_node["children"] = [child for child in the_node["children"].values()]  # convert to list
         stack.extend(the_node["children"])
-    breakpoint()
+    #breakpoint()
     return node
 
 
@@ -124,6 +124,9 @@ class FlameGraphReporter:
                 if is_cpython_internal(stack_frame):
                     num_skipped_frames += 1
                     continue
+                if is_frame_boring(stack_frame):
+                    num_skipped_frames += 1
+                    continue
                 if (stack_frame, thread_id) not in current_frame["children"]:
                     node = create_framegraph_node_from_stack_frame(stack_frame)
                     current_frame["children"][(stack_frame, thread_id)] = node
@@ -178,6 +181,9 @@ class FlameGraphReporter:
             num_skipped_frames = 0
             for index, stack_frame in enumerate(reversed(stack)):
                 if is_cpython_internal(stack_frame):
+                    num_skipped_frames += 1
+                    continue
+                if is_frame_boring(stack_frame):
                     num_skipped_frames += 1
                     continue
                 if (stack_frame, thread_id) not in current_frame["children"]:

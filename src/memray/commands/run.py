@@ -12,6 +12,7 @@ from contextlib import closing
 from contextlib import suppress
 from typing import List
 from typing import Optional
+import time
 
 from memray import Destination
 from memray import FileDestination
@@ -42,7 +43,7 @@ def _run_tracker(
             kwargs["follow_fork"] = True
         if trace_python_allocators:
             kwargs["trace_python_allocators"] = True
-        tracker = Tracker(destination=destination, native_traces=args.native, **kwargs)
+        tracker = Tracker(destination=destination, native_traces=args.native, memory_interval_ms = 10, **kwargs)  # sampling interval
     except OSError as error:
         raise MemrayCommandError(str(error), exit_code=1)
 
@@ -292,6 +293,7 @@ class RunCommand:
             )
 
     def run(self, args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+        start_time = time.time()
         if args.no_compress:
             args.compress_on_exit = False
 
@@ -311,3 +313,6 @@ class RunCommand:
             _run_with_socket_output(args)
         else:
             _run_with_file_output(args)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logger.info("memray profiler time cost: {}".format(elapsed_time))

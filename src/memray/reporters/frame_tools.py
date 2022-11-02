@@ -32,6 +32,48 @@ SYMBOL_IGNORELIST = {
     "wrapperdescr_call",
 }
 
+SYMBOL_BLACKLIST = {
+    "call_function.lto_priv.0",
+    "_PyFunction_FastCallKeywords",
+    "_PyCFunction_FastCallKeywords",
+    "_PyMethodDef_RawFastCallKeywords",
+    "PyImport_ImportModuleLevelObject.localalias",
+    "_PyObject_CallMethodIdObjArgs",
+    "object_vacall",
+    "_PyFunction_FastCallDict",
+    "_find_and_load",
+    "_find_and_load_unlocked",
+    "_load_unlocked",
+    "exec_module",
+    "_call_with_frames_removed",
+    "_PyCFunction_FastCallDict",
+    "_PyMethodDef_RawFastCallDict",
+    "_PyEval_EvalCodeWithName",
+    "builtin_exec",
+    "PyEval_EvalCode",
+    "PyEval_EvalCodeEx",
+    "_handle_fromlist",
+    "PyCFunction_Call",
+    "builtin___import__",
+    "get_code",
+    "_compile_bytecode",
+    "marshal_loads.lto_priv.0",
+    "r_object.lto_priv.0",
+}
+
+def is_frame_boring(frame: StackFrame) -> bool:  # possibly lead to lack of 'litte' functions
+    function, file, *_ = frame
+    if "frozen" in function or "lto_priv.0" in function or "isra.0" in function or "_PyObject" in function or \
+        "_PyFrame" in function or "Py" in function:
+        return True
+
+    if "frozen" in file:
+        return True
+
+    if function in SYMBOL_BLACKLIST or (function in SYMBOL_IGNORELIST):
+        return True
+    return False
+
 
 def is_cpython_internal(frame: StackFrame) -> bool:
     symbol, file, *_ = frame

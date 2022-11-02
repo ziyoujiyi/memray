@@ -401,6 +401,7 @@ std::unique_ptr<Tracker> Tracker::d_instance_owner;
 std::atomic<Tracker*> Tracker::d_instance = nullptr;
 
 MEMRAY_FAST_TLS thread_local size_t NativeTrace::MAX_SIZE{128};
+MEMRAY_FAST_TLS thread_local size_t CpuNativeTrace::MAX_SIZE{256};
 
 std::vector<PythonStackTracker::LazilyEmittedFrame>
 PythonStackTracker::pythonFrameToStack(PyFrameObject* current_frame)
@@ -531,7 +532,7 @@ Tracker::Tracker(
     call_once(once, [] {
         hooks::ensureAllHooksAreValid();
         NativeTrace::setup();
-
+        CpuNativeTrace::setup();
         // We must do this last so that a child can't inherit an environment
         // where only half of our one-time setup is done.
         pthread_atfork(&prepareFork, &parentFork, &childFork);
@@ -551,19 +552,32 @@ Tracker::Tracker(
 
     tracking_api::Tracker::activate();
 
-    auto old_handler = signal(SIGALRM, trackCpu);
-    assert(old_handler == SIG_DFL);
-    // signal(SIGALRM, old_handler);
-    struct itimerval tick;
+    struct sigaction sa, old_sa;
+    sa.sa_handler = trackCpu;
+//  sigaddset(&sa.sa_mask,SIGQUIT);
+//  sigaddset(&sa.sa_mask,SIGTERM)
+//  sa.sa_flags = SA_NODEFER | SA_RESETHAND;  
+//  sa.sa_flags = 0;
+
+    if (sigaction(SIGALRM, &sa, &old_sa) < 0) {
+       LOG(ERROR) << "sigaction error";
+    }
+    //auto old_handler = signal(SIGALRM, trackCpu);
+    //assert(old_handler == SIG_DFL);
+    //signal(SIGALRM, old_handler);
+    
+    struct itimerval tick, oldTick;
     memset(&tick, 0, sizeof(tick));
     tick.it_value.tv_sec = 0;
-    tick.it_value.tv_usec = 10000;
+    tick.it_value.tv_usec = 11000;
     tick.it_interval.tv_sec = 0;
-    tick.it_interval.tv_usec = 10000; // us
-    int ret = setitimer(ITIMER_REAL, &tick, NULL);
+    tick.it_interval.tv_usec = (d_memory_interval + 1) * 1000;
+    int ret = setitimer(ITIMER_REAL, &tick, &oldTick);
     if (ret) {
         LOG(ERROR) << "set timer failed: " << ret;
     }
+    MY_DEBUG("cpu sampling interval: %lld ms", tick.it_interval.tv_usec / 1000);
+    MY_DEBUG("memory_interval: %d ms", d_memory_interval);
 
     d_background_thread = std::make_unique<BackgroundThread>(d_writer, memory_interval);
     d_background_thread->start();
@@ -597,6 +611,7 @@ Tracker::BackgroundThread::BackgroundThread(
 , d_memory_interval(memory_interval)
 {
     d_cpu_profiler_interval = memory_interval;  // ms, TODO: can be set by constructor
+    MY_DEBUG("cpu_interval: %d ms", d_cpu_profiler_interval);
     d_cpu_to_memory_sampling_ratio = d_memory_interval / d_cpu_profiler_interval;
 #ifdef __linux__
     d_procs_statm.open("/proc/self/statm");
@@ -665,15 +680,18 @@ Tracker::BackgroundThread::start()
             {
                 //raise(SIGPROF);
                 d_cpu_sampling_cnt++;
+                
                 int ret = d_writer->writeRecord(CpuRecord{timeElapsed()});  // no use ?
                 if (!ret) {
                     std::cerr << "Failed to write CpuRecord, deactivating tracking" << std::endl;
                     Tracker::deactivate();
                     break;
                 }
+                
             } 
 
             if (d_cpu_sampling_cnt == d_cpu_to_memory_sampling_ratio) {
+                
                 size_t rss = getRSS();
                 if (rss == 0) {
                     Tracker::deactivate();
@@ -684,10 +702,11 @@ Tracker::BackgroundThread::start()
                     Tracker::deactivate();
                     break;
                 }
+                
                 d_cpu_sampling_cnt = 0;
             }
         }
-    });
+   });
 }
 
 void
@@ -767,19 +786,27 @@ Tracker::childFork()
 void
 Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
+    static size_t blocked_cpu_sample = 0;
     if (RecursionGuard::isActive || !Tracker::isActive()) {
+        if (++blocked_cpu_sample % 100 == 0) {
+            MY_DEBUG("blocked_cpu_sample: %lld", blocked_cpu_sample);
+        }
         return;
     }
     RecursionGuard guard;
-    PythonStackTracker::get().emitPendingPushesAndPops();
+    //PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
-        NativeTrace trace;
+        CpuNativeTrace trace;
         frame_id_t native_index = 0;
         // Skip the internal frames so we don't need to filter them later.
         if (trace.fill(2)) {
             native_index = d_native_trace_tree.getTraceIndex(trace, [&](frame_id_t ip, uint32_t index) {
                 return d_writer->writeRecord(UnresolvedNativeFrame{ip, index});
             });
+        }
+        static size_t cpu_sample_record_cnt = 0;
+        if (++cpu_sample_record_cnt % 100 == 0) {
+            MY_DEBUG("cpu_sample_record_cnt: %lld", cpu_sample_record_cnt);
         }
         NativeCpuSampleRecord record{func, native_index};
         if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
@@ -798,12 +825,15 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 void
 Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
 {
+    static size_t blocked_allocation_sample = 0;
     if (RecursionGuard::isActive || !Tracker::isActive()) {
+        if (++blocked_allocation_sample % 20000 == 0) {
+            MY_DEBUG("blocked_allocation: %lld", blocked_allocation_sample);
+        }
         return;
     }
     RecursionGuard guard;
     PythonStackTracker::get().emitPendingPushesAndPops();
-
     if (d_unwind_native_frames) {
         NativeTrace trace;
         frame_id_t native_index = 0;
@@ -812,6 +842,10 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
             native_index = d_native_trace_tree.getTraceIndex(trace, [&](frame_id_t ip, uint32_t index) {
                 return d_writer->writeRecord(UnresolvedNativeFrame{ip, index});
             });
+        }
+        static size_t allocation_record_cnt = 0;
+        if (++allocation_record_cnt % 20000 == 0) {
+            MY_DEBUG("allocation_record_cnt: %lld", allocation_record_cnt);
         }
         NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
         if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
@@ -1135,6 +1169,7 @@ PyTraceFunction(
         int what,
         [[maybe_unused]] PyObject* arg)
 {
+    return 0;
     RecursionGuard guard;
     if (!Tracker::isActive()) {
         return 0;
