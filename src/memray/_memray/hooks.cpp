@@ -117,9 +117,6 @@ pymalloc_malloc(void* ctx, size_t size) noexcept
         tracking_api::RecursionGuard guard;
         ptr = alloc->malloc(alloc->ctx, size);
     }
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ptr;
-    }
     tracking_api::Tracker::trackAllocation(ptr, size, hooks::Allocator::PYMALLOC_MALLOC);
     return ptr;
 }
@@ -132,9 +129,6 @@ pymalloc_realloc(void* ctx, void* ptr, size_t size) noexcept
     {
         tracking_api::RecursionGuard guard;
         ret = alloc->realloc(alloc->ctx, ptr, size);
-    }
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
     }
     if (ret) {
         if (ptr) {
@@ -157,9 +151,6 @@ pymalloc_calloc(void* ctx, size_t nelem, size_t size) noexcept
         tracking_api::RecursionGuard guard;
         ptr = alloc->calloc(alloc->ctx, nelem, size);
     }
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ptr;
-    }
     tracking_api::Tracker::trackAllocation(ptr, nelem * size, hooks::Allocator::PYMALLOC_CALLOC);
     return ptr;
 }
@@ -171,9 +162,6 @@ pymalloc_free(void* ctx, void* ptr) noexcept
     {
         tracking_api::RecursionGuard guard;
         alloc->free(alloc->ctx, ptr);
-    }
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return;
     }
     if (ptr) {
         tracking_api::Tracker::trackDeallocation(ptr, 0, hooks::Allocator::PYMALLOC_FREE);

@@ -63,6 +63,7 @@ class RecordWriter
     int d_version{CURRENT_HEADER_VERSION};
     std::unique_ptr<memray::io::Sink> d_sink;
     std::mutex d_mutex;
+    SpinMutex d_spin_mutex;
     HeaderRecord d_header{};
     TrackerStats d_stats{};
     DeltaEncodedFields d_last;
@@ -120,14 +121,16 @@ bool inline RecordWriter::writeIntegralDelta(T* prev, T new_val)
 template<typename T>
 bool inline RecordWriter::writeRecord(const T& item)
 {
-    std::lock_guard<std::mutex> lock(d_mutex);
+    //std::lock_guard<std::mutex> lock(d_mutex);
+    std::lock_guard<SpinMutex> lock(d_spin_mutex);
     return writeRecordUnsafe(item);
 }
 
 template<typename T>
 bool inline RecordWriter::writeThreadSpecificRecord(thread_id_t tid, const T& item)
 {
-    std::lock_guard<std::mutex> lock(d_mutex);
+    //std::lock_guard<std::mutex> lock(d_mutex);
+    std::lock_guard<SpinMutex> lock(d_spin_mutex);
     if (d_last.thread_id != tid) {
         d_last.thread_id = tid;
         if (!writeRecordUnsafe(ContextSwitch{tid})) {

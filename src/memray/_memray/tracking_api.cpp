@@ -569,7 +569,7 @@ Tracker::Tracker(
     struct itimerval tick, oldTick;
     memset(&tick, 0, sizeof(tick));
     tick.it_value.tv_sec = 0;
-    tick.it_value.tv_usec = 11000;
+    tick.it_value.tv_usec = 10000;
     tick.it_interval.tv_sec = 0;
     tick.it_interval.tv_usec = (d_memory_interval + 1) * 1000;
     int ret = setitimer(ITIMER_REAL, &tick, &oldTick);
@@ -800,9 +800,11 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
         frame_id_t native_index = 0;
         // Skip the internal frames so we don't need to filter them later.
         if (trace.fill(2)) {
+            /*
             native_index = d_native_trace_tree.getTraceIndex(trace, [&](frame_id_t ip, uint32_t index) {
                 return d_writer->writeRecord(UnresolvedNativeFrame{ip, index});
             });
+            */
         }
         static size_t cpu_sample_record_cnt = 0;
         if (++cpu_sample_record_cnt % 100 == 0) {
