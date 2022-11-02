@@ -787,13 +787,13 @@ void
 Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
     static size_t blocked_cpu_sample = 0;
-    if (RecursionGuard::isActive || !Tracker::isActive()) {
+    if (!Tracker::isActive()) {
         if (++blocked_cpu_sample % 100 == 0) {
             MY_DEBUG("blocked_cpu_sample: %lld", blocked_cpu_sample);
         }
         return;
     }
-    RecursionGuard guard;
+    
     //PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
         CpuNativeTrace trace;
@@ -811,10 +811,12 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
             MY_DEBUG("cpu_sample_record_cnt: %lld", cpu_sample_record_cnt);
         }
         NativeCpuSampleRecord record{func, native_index};
+        /*
         if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;
             deactivate();
         }
+        */
     } else {
         CpuSampleRecord record{func};
         if (!d_writer->writeThreadSpecificRecord(thread_id(), record)) {
