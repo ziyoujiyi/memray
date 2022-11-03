@@ -322,7 +322,6 @@ dlclose(void* handle) noexcept
 
     int ret = hooks::dlclose(handle);
     tracking_api::NativeTrace::flushCache();
-    tracking_api::CpuNativeTrace::flushCache();
     if (!ret) tracking_api::Tracker::invalidate_module_cache();
     return ret;
 }

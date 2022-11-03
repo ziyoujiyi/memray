@@ -35,8 +35,8 @@ COMMENT
 rm -rf build/lib.linux-x86_64-cpython-37/memray/_memray.cpython-37m-x86_64-linux-gnu.so
 #rm -rf build/lib.linux-x86_64-cpython-37/memray/_test_utils.cpython-37m-x86_64-linux-gnu.so
 
-rm -rf /home/bwang/memray/src/memray/_memray.cpp
-rm -rf ./src/memray/_test_utils.cpython-37m-x86_64-linux-gnu.so
+#rm -rf /home/bwang/memray/src/memray/_memray.cpp
+#rm -rf ./src/memray/_test_utils.cpython-37m-x86_64-linux-gnu.so
 rm -rf ./src/memray/_memray.cpython-37m-x86_64-linux-gnu.so
 
 python setup.py develop --editable -b build --prefix /home/bwang/.local/ --no-deps

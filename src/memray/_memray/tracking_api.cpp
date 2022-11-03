@@ -529,7 +529,6 @@ Tracker::Tracker(
     call_once(once, [] {
         hooks::ensureAllHooksAreValid();
         NativeTrace::setup();
-        CpuNativeTrace::setup();
         // We must do this last so that a child can't inherit an environment
         // where only half of our one-time setup is done.
         pthread_atfork(&prepareFork, &parentFork, &childFork);
@@ -789,7 +788,7 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
     stopTrace();
     //PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
-        CpuNativeTrace trace;
+        NativeTrace trace(1);
         frame_id_t native_index = 0;
         // Skip the internal frames so we don't need to filter them later.
         if (trace.fill(2)) {
@@ -834,13 +833,13 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     stopTrace();
     PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
-        NativeTrace trace;
+        NativeTrace trace(0);
         frame_id_t native_index = 0;
         // Skip the internal frames so we don't need to filter them later.
-        if (trace.fill(2)) {
+        if (trace.fill(2)) {/*
             native_index = d_native_trace_tree.getTraceIndex(trace, [&](frame_id_t ip, uint32_t index) {
                 return d_writer->writeRecord(UnresolvedNativeFrame{ip, index});
-            });
+            });*/
         }
         static size_t allocation_record_cnt = 0;
         if (++allocation_record_cnt % 20000 == 0) {
