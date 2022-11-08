@@ -32,6 +32,7 @@ def _get_free_port() -> int:
 
 def _run_tracker(
     destination: Destination,
+    native_destination: Destination,
     args: argparse.Namespace,
     post_run_message: Optional[str] = None,
     follow_fork: bool = False,
@@ -43,7 +44,7 @@ def _run_tracker(
             kwargs["follow_fork"] = True
         if trace_python_allocators:
             kwargs["trace_python_allocators"] = True
-        tracker = Tracker(destination=destination, native_traces=args.native, memory_interval_ms = 10, **kwargs)  # sampling interval
+        tracker = Tracker(destination=destination, native_destination=native_destination, native_traces=args.native, memory_interval_ms = 10, **kwargs)  # sampling interval
     except OSError as error:
         raise MemrayCommandError(str(error), exit_code=1)
 
@@ -148,8 +149,19 @@ def _run_with_file_output(args: argparse.Namespace) -> None:
     else:
         filename = args.output
 
+    if args.native_output is None:
+        native_script_name = args.script
+        if args.run_as_cmd:
+            native_script_name = "native-string"
+
+        native_output = f"memray-native-trace-{os.path.basename(native_script_name)}.{os.getpid()}.bin"
+        native_filename = os.path.join(os.path.dirname(native_script_name), native_output)
+    else:
+        native_filename = args.native_output
+
     if not args.quiet:
         print(f"Writing profile results into {filename}")
+        print(f"Writing native trace into {native_filename}")
 
     example_report_generation_message = textwrap.dedent(
         f"""
@@ -165,9 +177,13 @@ def _run_with_file_output(args: argparse.Namespace) -> None:
     destination = FileDestination(
         path=filename, overwrite=args.force, compress_on_exit=args.compress_on_exit
     )
+    native_destination = FileDestination(
+        path=native_filename, overwrite=args.force, compress_on_exit=args.compress_on_exit
+    )
     try:
         _run_tracker(
             destination=destination,
+            native_destination=native_destination,
             args=args,
             post_run_message=example_report_generation_message,
             follow_fork=args.follow_fork,
@@ -182,6 +198,12 @@ class RunCommand:
 
     def prepare_parser(self, parser: argparse.ArgumentParser) -> None:
         parser.usage = "%(prog)s [-m module | -c cmd | file] [args]"
+        native_output_group = parser.add_mutually_exclusive_group()
+        native_output_group.add_argument(
+            "-no",
+            "--native_output",
+            help="Output file name (default: <process_name>.<pid>.native.bin)",
+        )
         output_group = parser.add_mutually_exclusive_group()
         output_group.add_argument(
             "-o",

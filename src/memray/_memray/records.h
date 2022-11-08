@@ -43,6 +43,7 @@ enum class RecordType : unsigned char {
 
 enum class OtherRecordType : unsigned char {
     TRAILER = 1,
+    HEADER = 2,
 };
 
 struct RecordTypeAndFlags

@@ -1,8 +1,8 @@
 #pragma once
+#include <assert.h>
 #include <iostream>
 #include <mutex>
 #include <vector>
-#include <assert.h>
 
 #include "records.h"
 
@@ -18,28 +18,33 @@
 namespace memray::tracking_api {
 
 #define NATIVE_TRACE_MAX_SIZE 1024
-#define MAX_STROE_BACKTRACE 128
+#define MAX_STROE_BACKTRACE 1
 using ip_t = frame_id_t;
 
-class BackTraceData {
-public:
-    static BackTraceData& getInstance() {
+class BackTraceData
+{
+  public:
+    static BackTraceData& getInstance()
+    {
         static BackTraceData ins;
         return ins;
     }
 
-private:
-    void Init() {
+  private:
+    void Init()
+    {
         mem_trace_cnt_ptr = std::make_shared<size_t>(0);
         d_mem_sizes_ptr = std::make_shared<std::vector<ip_t>>(MAX_STROE_BACKTRACE, 0);
-        d_mem_data_ptr = std::make_shared<std::vector<ip_t>>(NATIVE_TRACE_MAX_SIZE * MAX_STROE_BACKTRACE); 
+        d_mem_data_ptr =
+                std::make_shared<std::vector<ip_t>>(NATIVE_TRACE_MAX_SIZE * MAX_STROE_BACKTRACE);
 
         cpu_trace_cnt_ptr = std::make_shared<size_t>(0);
         d_cpu_sizes_ptr = std::make_shared<std::vector<ip_t>>(MAX_STROE_BACKTRACE, 0);
-        d_cpu_data_ptr = std::make_shared<std::vector<ip_t>>(NATIVE_TRACE_MAX_SIZE * MAX_STROE_BACKTRACE); 
+        d_cpu_data_ptr =
+                std::make_shared<std::vector<ip_t>>(NATIVE_TRACE_MAX_SIZE * MAX_STROE_BACKTRACE);
     }
 
-public:
+  public:
     std::shared_ptr<size_t> mem_trace_cnt_ptr;
     std::shared_ptr<std::vector<ip_t>> d_mem_sizes_ptr;
     std::shared_ptr<std::vector<ip_t>> d_mem_data_ptr;
@@ -48,40 +53,74 @@ public:
     std::shared_ptr<std::vector<ip_t>> d_cpu_sizes_ptr;
     std::shared_ptr<std::vector<ip_t>> d_cpu_data_ptr;
 
-private:
-    BackTraceData() {
+  private:
+    BackTraceData()
+    {
         Init();
     }
-    ~BackTraceData() {}
+    ~BackTraceData()
+    {
+    }
     BackTraceData& operator=(const BackTraceData&);
     BackTraceData(const BackTraceData&);
-
 };
+
+static BackTraceData* single = &BackTraceData::getInstance();
 
 class NativeTrace
 {
   public:
-    NativeTrace() {}
-
-    NativeTrace(bool flag) {
-    BackTraceData* d_single = &BackTraceData::getInstance();
+    static NativeTrace& getInstance(int flag)
+    {
         if (flag == 0) {
-            d_cnt_ptr = d_single->mem_trace_cnt_ptr;
-            d_sizes_ptr = d_single->d_mem_sizes_ptr;
-            d_data_ptr = d_single->d_mem_data_ptr;
+            static NativeTrace mem_ins(0);
+            return mem_ins;
         } else {
-            d_cnt_ptr = d_single->cpu_trace_cnt_ptr;
-            d_sizes_ptr = d_single->d_cpu_sizes_ptr;
-            d_data_ptr = d_single->d_cpu_data_ptr;
+            static NativeTrace cpu_ins(1);
+            return cpu_ins;
         }
     }
 
+  public:
+    std::shared_ptr<size_t> d_cnt_ptr;
+    std::shared_ptr<std::vector<ip_t>> d_sizes_ptr;
+    std::shared_ptr<std::vector<ip_t>> d_data_ptr;
+
+  private:
+    NativeTrace(int flag)
+    {
+        if (flag == 0) {
+            d_cnt_ptr = single->mem_trace_cnt_ptr;
+            d_sizes_ptr = single->d_mem_sizes_ptr;
+            d_data_ptr = single->d_mem_data_ptr;
+        } else {
+            d_cnt_ptr = single->cpu_trace_cnt_ptr;
+            d_sizes_ptr = single->d_cpu_sizes_ptr;
+            d_data_ptr = single->d_cpu_data_ptr;
+        }
+    }
+    NativeTrace& operator=(const NativeTrace&);
+    NativeTrace(const NativeTrace&);
+    ~NativeTrace()
+    {
+    }
+
+  public:
+    enum WRITE_READ_FLAG { WRITE_ONLY = 0, READ_ONLY = 1 };
+
+    int32_t write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
+    thread_id_t backtrace_thread_id = 0;
+
+  public:
     __attribute__((always_inline)) inline bool fill(size_t skip)
     {
-        size_t size = unw_backtrace((void**)d_data_ptr->data(), NATIVE_TRACE_MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man  https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
+        size_t size = unw_backtrace(
+                (void**)d_data_ptr->data(),
+                NATIVE_TRACE_MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man
+                                         // https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
         if (likely(size > 0)) {
-            //(*d_cnt_ptr)++;
             (*d_sizes_ptr)[*d_cnt_ptr] = size;
+            //(*d_cnt_ptr)++;
             return true;
         } else {
             return false;
@@ -113,14 +152,7 @@ class NativeTrace
         return;
 #endif
     }
-
-  public:
-    BackTraceData* d_single = nullptr;
-    std::shared_ptr<size_t> d_cnt_ptr;
-    std::shared_ptr<std::vector<ip_t>> d_sizes_ptr;
-    std::shared_ptr<std::vector<ip_t>> d_data_ptr;
 };
-
 
 class FrameTree
 {
@@ -137,19 +169,17 @@ class FrameTree
     using tracecallback_t = std::function<bool(frame_id_t, index_t)>;
 
     template<typename T>
-    size_t getTraceIndex(const T& stack_trace, const tracecallback_t& callback)
+    size_t getTraceIndex(const T* stack_trace, const tracecallback_t& callback)
     {
-        std::lock_guard<std::mutex> lock(d_mutex); 
+        std::lock_guard<std::mutex> lock(d_mutex);
         index_t index = 0;
-        
         int64_t backtrace_idx = 0;
-        int64_t size = stack_trace.d_sizes_ptr->at(backtrace_idx);
+        int64_t size = stack_trace->d_sizes_ptr->at(backtrace_idx);
         int64_t start = NATIVE_TRACE_MAX_SIZE * backtrace_idx;
         for (int64_t i = start + size - 1; i >= start; i--) {
-            frame_id_t frame = stack_trace.d_data_ptr->at(i);
+            frame_id_t frame = stack_trace->d_data_ptr->at(i);
             index = getTraceIndexUnsafe(index, frame, callback);
         }
-
         return index;
     }
 

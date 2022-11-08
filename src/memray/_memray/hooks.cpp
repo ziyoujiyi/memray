@@ -173,7 +173,8 @@ malloc(size_t size) noexcept
 {
     assert(hooks::malloc);
 
-    void* ptr = hooks::malloc(size);  // N6memray5hooks10SymbolHookIPDoFPvmEEE
+    void* ptr = hooks::malloc(size);
+
     if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
         return ptr;
     }
@@ -193,7 +194,6 @@ free(void* ptr) noexcept
             tracking_api::Tracker::trackDeallocation(ptr, 0, hooks::Allocator::FREE);
         }
     }
-
     hooks::free(ptr);
 }
 
@@ -201,7 +201,6 @@ void*
 realloc(void* ptr, size_t size) noexcept
 {
     assert(hooks::realloc);
-
     void* ret = hooks::realloc(ptr, size);
     if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
         return ret;
@@ -219,7 +218,6 @@ void*
 calloc(size_t num, size_t size) noexcept
 {
     assert(hooks::calloc);
-
     void* ret = hooks::calloc(num, size);
     if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
         return ret;
@@ -263,7 +261,8 @@ munmap(void* addr, size_t length) noexcept
     if (likely(hooks::MEMORY_TRACE_SWITCH == true)) {
         tracking_api::Tracker::trackDeallocation(addr, length, hooks::Allocator::MUNMAP);
     }
-    return hooks::munmap(addr, length);
+    int ret = hooks::munmap(addr, length);
+    return ret;
 }
 
 void*
@@ -289,7 +288,6 @@ int
 posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
 {
     assert(hooks::posix_memalign);
-
     int ret = hooks::posix_memalign(memptr, alignment, size);
     if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
         return ret;
@@ -330,7 +328,6 @@ void*
 aligned_alloc(size_t alignment, size_t size) noexcept
 {
     assert(hooks::aligned_alloc);
-
     void* ret = hooks::aligned_alloc(alignment, size);
     if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
         return ret;
@@ -367,7 +364,6 @@ void*
 pvalloc(size_t size) noexcept
 {
     assert(hooks::pvalloc);
-
     void* ret = hooks::pvalloc(size);
     if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
         return ret;

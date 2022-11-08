@@ -50,25 +50,27 @@ struct RecursionGuard
     MEMRAY_FAST_TLS static thread_local bool isActive;
 };
 
-
-template <typename T>
-class NewSTLAllocator : public std::allocator<T> {
-public:
-    template <typename U>
-    struct rebind {
+template<typename T>
+class NewSTLAllocator : public std::allocator<T>
+{
+  public:
+    template<typename U>
+    struct rebind
+    {
         typedef NewSTLAllocator<U> other;
     };
 
-public:
-    T* allocate(size_t n, const void* hint = 0) {
+  public:
+    T* allocate(size_t n, const void* hint = 0)
+    {
         return (T*)hooks::malloc(n * sizeof(T));
     }
 
-    void deallocate(T* ptr, size_t n) {
+    void deallocate(T* ptr, size_t n)
+    {
         hooks::free(ptr);
     }
 };
-
 
 // Trace function interface
 
@@ -125,7 +127,6 @@ begin_tracking_greenlets();
 void
 handle_greenlet_switch(PyObject* from, PyObject* to);
 
-
 /**
  * Singleton managing all the global state and functionality of the tracing mechanism
  *
@@ -139,16 +140,25 @@ class Tracker
 {
   public:
     // Constructors
-    ~Tracker();
+    explicit Tracker(
+            std::unique_ptr<RecordWriter> record_writer,
+            std::unique_ptr<RecordWriter> other_writer,
+            bool native_traces,
+            unsigned int memory_interval,
+            bool follow_fork,
+            bool trace_python_allocators);
 
     Tracker(Tracker& other) = delete;
     Tracker(Tracker&& other) = delete;
     void operator=(const Tracker&) = delete;
     void operator=(Tracker&&) = delete;
 
+    ~Tracker();
+
     // Interface to get the tracker instance
     static PyObject* createTracker(
             std::unique_ptr<RecordWriter> record_writer,
+            std::unique_ptr<RecordWriter> other_writer,
             bool native_traces,
             unsigned int memory_interval,
             bool follow_fork,
@@ -157,21 +167,12 @@ class Tracker
     static Tracker* getTracker();
 
     // Cpu tracking interface
-    __attribute__((always_inline)) inline static void
-    trackCpu(int signo)
+    __attribute__((always_inline)) inline static void trackCpu(int signo)
     {
-        //static size_t num = 0; 
-        switch(signo) {
-            case SIGALRM:
-                Tracker* tracker = getTracker();
-                if (tracker) {
-                    tracker->trackCpuImpl(hooks::Allocator::CPU_SAMPLING);
-                }
-                break;
+        Tracker* tracker = getTracker();
+        if (tracker) {
+            tracker->trackCpuImpl(hooks::Allocator::CPU_SAMPLING);
         }
-        //if (++num == 10000) {
-        //    kill(getpid(), SIGKILL);
-        //}
     }
 
     // Allocation tracking interface
@@ -231,23 +232,33 @@ class Tracker
     {
       public:
         // Constructors
-        BackgroundThread(std::shared_ptr<RecordWriter> record_writer, unsigned int memory_interval);
+        BackgroundThread(
+                std::shared_ptr<RecordWriter> record_writer,
+                std::shared_ptr<RecordWriter> other_writer,
+                unsigned int memory_interval,
+                unsigned int cpu_interval);
+
+        ~BackgroundThread()
+        {
+        }
 
         // Methods
         void start();
+        void startWriteRecord();
         void stop();
+        void stopWriteRecord();
 
       private:
         // Data members
         std::shared_ptr<RecordWriter> d_writer;
+        std::shared_ptr<RecordWriter> d_other_writer;
         bool d_stop{false};
-        std::atomic_int d_cpu_sampling_cnt{0};
-        unsigned int d_cpu_to_memory_sampling_ratio{1};  // default value
-        unsigned int d_cpu_profiler_interval;
+        bool d_stop_writer{false};
         unsigned int d_memory_interval;
+        unsigned int d_cpu_interval;
         std::mutex d_mutex;
         std::condition_variable d_cv;
-        std::thread d_thread;
+        std::thread d_thread, d_write_thread;
         mutable std::ifstream d_procs_statm;
 
         // Methods
@@ -262,7 +273,8 @@ class Tracker
     static std::atomic<Tracker*> d_instance;
 
     std::shared_ptr<RecordWriter> d_writer;
-    FrameTree d_native_trace_tree;
+    std::shared_ptr<RecordWriter> d_other_writer;
+    // FrameTree d_native_trace_tree;
     bool d_unwind_native_frames;
     unsigned int d_memory_interval;
     bool d_follow_fork;
@@ -276,10 +288,12 @@ class Tracker
     void trackCpuImpl(hooks::Allocator func);
     void trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func);
     void trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func);
-    static inline void startTrace() {
+    static inline void startTrace()
+    {
         hooks::MEMORY_TRACE_SWITCH = true;
     }
-    static inline void stopTrace() {
+    static inline void stopTrace()
+    {
         hooks::MEMORY_TRACE_SWITCH = false;
     }
     void invalidate_module_cache_impl();
@@ -287,13 +301,6 @@ class Tracker
     void registerThreadNameImpl(const char* name);
     void registerPymallocHooks() const noexcept;
     void unregisterPymallocHooks() const noexcept;
-
-    explicit Tracker(
-            std::unique_ptr<RecordWriter> record_writer,
-            bool native_traces,
-            unsigned int memory_interval,
-            bool follow_fork,
-            bool trace_python_allocators);
 
     static void prepareFork();
     static void parentFork();
