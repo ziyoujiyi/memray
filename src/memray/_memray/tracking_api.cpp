@@ -169,7 +169,7 @@ PythonStackTracker::emitPendingPushesAndPops()
     // Any number of EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED frames
     // 0 or 1 EMITTED_BUT_LINE_NUMBER_MAY_HAVE_CHANGED frame
     // Any number of NOT_EMITTED frames
-	MY_DEBUG("entering emitPendingPushesAndPops >>>");
+    // MY_DEBUG("entering emitPendingPushesAndPops >>>");
     auto it = d_stack->rbegin();
     for (; it != d_stack->rend(); ++it) {
         if (it->state == FrameState::NOT_EMITTED) {
@@ -260,7 +260,8 @@ PythonStackTracker::reloadStackIfTrackerChanged()
 int
 PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
 {
-    installGreenletTraceFunctionIfNeeded();
+    // MY_DEBUG("entering pushPythonFrame >>> ");
+	installGreenletTraceFunctionIfNeeded();
 
     PyCodeObject* code = compat::frameGetCode(frame);
     const char* function = PyUnicode_AsUTF8(code->co_name);
@@ -277,7 +278,6 @@ PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
     // It doesn't matter to the reader, and is more efficient.
     bool is_entry_frame = !s_native_tracking_enabled || compat::isEntryFrame(frame);
     pushLazilyEmittedFrame({frame, {function, filename, 0, is_entry_frame}, FrameState::NOT_EMITTED});
-	MY_DEBUG("push..........");
     PythonStackTracker::get().emitPendingPushesAndPops();
     return 0;
 }
@@ -296,7 +296,8 @@ PythonStackTracker::pushLazilyEmittedFrame(const LazilyEmittedFrame& frame)
 void
 PythonStackTracker::popPythonFrame()
 {
-    installGreenletTraceFunctionIfNeeded();
+    // MY_DEBUG("entering popPythonFrame........");
+	installGreenletTraceFunctionIfNeeded();
 
     if (!d_stack || d_stack->empty()) {
         return;
@@ -308,7 +309,6 @@ PythonStackTracker::popPythonFrame()
     }
     d_stack->pop_back();
     invalidateMostRecentFrameLineNumber();
-	MY_DEBUG("pop........");
     PythonStackTracker::get().emitPendingPushesAndPops();
 }
 
@@ -471,7 +471,8 @@ PythonStackTracker::recordAllStacks()
 void
 PythonStackTracker::installProfileHooks()
 {
-    assert(PyGILState_Check());
+    MY_DEBUG("entering install Profile hooks >>>");
+	assert(PyGILState_Check());
 
     // Uninstall any existing profile function in all threads. Do this before
     // installing ours, since we could lose the GIL if the existing profile arg
@@ -531,10 +532,6 @@ Tracker::Tracker(
     // Note: this must be set before the hooks are installed.
     d_instance = this;
     unsigned int cpu_interval = 11;  // ms
-    d_background_thread =
-            std::make_unique<BackgroundThread>(d_writer, d_other_writer, memory_interval, cpu_interval);
-    d_background_thread->start();
-    d_background_thread->startWriteRecord();
 
     static std::once_flag once;
     call_once(once, [] {
@@ -544,32 +541,32 @@ Tracker::Tracker(
         // where only half of our one-time setup is done.
         pthread_atfork(&prepareFork, &parentFork, &childFork);
     });
-    /*
+
     if (!d_writer->writeHeader(false)) {
         throw IoError{"Failed to write output header"};
     }
-    */
-    d_writer->writeHeaderMsg(false);
+
+    // d_writer->writeHeaderMsg(false);
 
     updateModuleCache();
 
     RecursionGuard guard;
+
     PythonStackTracker::s_native_tracking_enabled = native_traces;
     PythonStackTracker::installProfileHooks();
     if (d_trace_python_allocators) {
         registerPymallocHooks();
     }
 
-    tracking_api::Tracker::activate();
-
-    struct sigaction sa, old_sa;
+    struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
     sa.sa_handler = trackCpu;
     //  sigaddset(&sa.sa_mask,SIGQUIT);
     //  sigaddset(&sa.sa_mask,SIGTERM)
     //  sa.sa_flags = SA_NODEFER | SA_RESETHAND;
     //  sa.sa_flags = 0;
 
-    if (sigaction(SIGALRM, &sa, &old_sa) < 0) {
+    if (sigaction(SIGALRM, &sa, nullptr) < 0) {
         LOG(ERROR) << "sigaction error";
     }
     // auto old_handler = signal(SIGALRM, trackCpu);
@@ -589,8 +586,13 @@ Tracker::Tracker(
     if (ret) {
         LOG(ERROR) << "set timer failed: " << ret;
     }
-
+    MY_DEBUG("tracker is not actived!");
+	d_background_thread =
+            std::make_unique<BackgroundThread>(d_writer, d_other_writer, memory_interval, cpu_interval);
+    d_background_thread->start();
+    d_background_thread->startWriteRecord();
     d_patcher.overwrite_symbols();
+	tracking_api::Tracker::activate();
 }
 
 Tracker::~Tracker()
@@ -605,12 +607,12 @@ Tracker::~Tracker()
         unregisterPymallocHooks();
     }
     PythonStackTracker::removeProfileHooks();
-    /*
+    
         d_writer->writeTrailer();
         d_writer->writeHeader(true);
-        */
-    d_writer->writeTrailerMsg();
-    d_writer->writeHeaderMsg(true);
+    
+    //d_writer->writeTrailerMsg();
+    //d_writer->writeHeaderMsg(true);
 
     d_writer.reset();
 
@@ -716,6 +718,7 @@ Tracker::BackgroundThread::startWriteRecord()
     assert(d_write_thread.get_id() == std::thread::id());
     d_write_thread = std::thread([&]() -> void {
         MY_DEBUG("entering BackgroundThread::startWriteRecord >>>");
+		RecursionGuard::isActive = true;
         Msg* msg_ptr = nullptr;
         while (true) {
             if (d_stop_writer) {
@@ -730,10 +733,13 @@ Tracker::BackgroundThread::startWriteRecord()
                     return;
                 }
             }
-            bool ret = d_writer->procRecordMsg(msg_ptr);
-            if (ret == false) {
-                continue;
-            }
+			{
+				RecursionGuard guard;
+				bool ret = d_writer->procRecordMsg(msg_ptr);
+				if (ret == false) {
+					continue;
+				}
+			}
             d_writer->popOneMsg();
         }
         MY_DEBUG("exit BackgroundThread::startWriteRecord <<<");
@@ -821,8 +827,8 @@ Tracker::childFork()
 void
 Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
-	return;
-	stopTrace();
+    return;
+    stopTrace();
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
     static size_t blocked_cpu_sample = 0;
     if (!Tracker::isActive()
@@ -854,11 +860,10 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 void
 Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
 {
-    return;
 	NativeTrace* mem_trace_single = &NativeTrace::getInstance(0);
     static size_t blocked_allocation = 0;
     if (RecursionGuard::isActive || !Tracker::isActive()) {
-        if (++blocked_allocation % 10000 == 0) {
+        if (++blocked_allocation % 100 == 0) {
             MY_DEBUG("blocked allocation: %lld times", blocked_allocation);
         }
         return;
@@ -867,7 +872,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     stopTrace();
     // PythonStackTracker::get().emitPendingPushesAndPops();
     static size_t allocation_record_cnt = 0;
-    if (++allocation_record_cnt % 10000 == 0) {
+    if (++allocation_record_cnt % 1 == 0) {
         MY_DEBUG("processed allocation: %lld times", allocation_record_cnt);
     }
     if (d_unwind_native_frames) {
@@ -941,34 +946,34 @@ dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size
             segments.emplace_back(Segment{phdr.p_vaddr, phdr.p_memsz});
         }
     }
-    /*
-if (!writer->writeRecordUnsafe(SegmentHeader{filename, segments.size(), info->dlpi_addr}))
-{
-    std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
-    Tracker::deactivate();
-    return 1;
-}
-    */
-   MY_DEBUG("segments size: %d", segments.size());
-    if (!writer->writeRecordMsg(SegmentHeader{filename, segments.size(), info->dlpi_addr})) {
+
+    if (!writer->writeRecordUnsafe(SegmentHeader{filename, segments.size(), info->dlpi_addr})) {
         std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
         Tracker::deactivate();
         return 1;
     }
 
-    for (const auto& segment : segments) {
-        /*
-if (!writer->writeRecordUnsafe(segment)) {
-    std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
-    Tracker::deactivate();
-    return 1;
-}
+    /*
+    MY_DEBUG("segments size: %d", segments.size());
+    if (!writer->writeRecordMsg(SegmentHeader{filename, segments.size(), info->dlpi_addr})) {
+                std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
+                Tracker::deactivate();
+                return 1;
+    }
         */
+    for (const auto& segment : segments) {
+        if (!writer->writeRecordUnsafe(segment)) {
+            std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
+            Tracker::deactivate();
+            return 1;
+        }
+        /*
         if (!writer->writeRecordMsg(segment)) {
             std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
             Tracker::deactivate();
             return 1;
         }
+                */
     }
 
     return 0;
@@ -982,18 +987,20 @@ Tracker::updateModuleCacheImpl()
         return;
     }
     auto writer_lock = d_writer->acquireLock();
-    /*
+
     if (!d_writer->writeRecordUnsafe(MemoryMapStart{})) {
         std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
         deactivate();
     }
-    */
+    /*
     if (!d_writer->writeRecordMsg(MemoryMapStart{})) {
         std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
         deactivate();
-    }
+    }*/
 
-    dl_iterate_phdr(&dl_iterate_phdr_callback, d_writer.get());  // https://www.onitroad.com/jc/linux/man-pages/linux/man3/dl_iterate_phdr.3.html
+    dl_iterate_phdr(
+            &dl_iterate_phdr_callback,
+            d_writer.get());  // https://www.onitroad.com/jc/linux/man-pages/linux/man3/dl_iterate_phdr.3.html
     // dl_iterate_phdr(&dl_iterate_phdr_callback, d_other_writer.get());
 }
 
@@ -1024,7 +1031,7 @@ Tracker::registerFrame(const RawFrame& frame)
             deactivate();
         }
         */
-        if (!d_writer->writeThreadSpecificRecordMsg(d_writer->d_last.thread_id, frame_index)) {
+        if (!d_writer->writeRecordMsg(frame_index)) {
             std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
             deactivate();
         }
@@ -1035,19 +1042,21 @@ Tracker::registerFrame(const RawFrame& frame)
 bool
 Tracker::popFrames(uint32_t count)
 {
-    const FramePop entry{count};
     /*
+    const FramePop entry{count};
     if (!d_writer->writeThreadSpecificRecord(thread_id(), entry)) {
         std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
         deactivate();
         return false;
     }
+	return true;
     */
-   MY_DEBUG("ready to write FramePop >>> ");
-    if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), entry)) {
-        std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
-        deactivate();
-        return false;
+    while (count) {
+        uint8_t to_pop = (count > 16 ? 16 : count);
+        count -= to_pop;
+
+        to_pop -= 1;  // i.e. 0 means pop 1 frame, 15 means pop 16 frames
+        d_writer->writeRecordMsg(FramePop{to_pop});
     }
     return true;
 }
@@ -1064,7 +1073,6 @@ Tracker::pushFrame(const RawFrame& frame)
         return false;
     }
     */
-    MY_DEBUG("ready to write FramePush >>> ");
     if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), entry)) {
         std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
         deactivate();
@@ -1208,7 +1216,6 @@ PyTraceFunction(
         int what,
         [[maybe_unused]] PyObject* arg)
 {
-    return 0;
     RecursionGuard guard;
     if (!Tracker::isActive()) {
         return 0;
@@ -1261,6 +1268,7 @@ install_trace_function()
 {
     assert(PyGILState_Check());
     RecursionGuard guard;
+	MY_DEBUG("entering install trace function >>>");
     // Don't clear the python stack if we have already registered the tracking
     // function with the current thread. This happens when PyGILState_Ensure is
     // called and a thread state with our hooks installed already exists.
@@ -1268,7 +1276,6 @@ install_trace_function()
     if (ts->c_profilefunc == PyTraceFunction) {
         return;
     }
-
     PyObject* profileobj = create_profile_arg();
     if (!profileobj) {
         return;
@@ -1285,7 +1292,6 @@ install_trace_function()
         stack.push_back(frame);
         frame = compat::frameGetBack(frame);
     }
-
     auto& python_stack_tracker = PythonStackTracker::get();
     for (auto frame_it = stack.rbegin(); frame_it != stack.rend(); ++frame_it) {
         python_stack_tracker.pushPythonFrame(*frame_it);
