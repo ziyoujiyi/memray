@@ -128,7 +128,7 @@ class RecordWriter
     bool inline writeRecordMsg(const T& item);
 
     template<typename T>
-    bool inline writeMsgWithContext(thread_id_t last_tid, thread_id_t tid, const T& item);
+    bool inline writeMsgWithContext(thread_id_t& last_tid, thread_id_t tid, const T& item);
     bool inline writeUnresolvedNativeFrameMsg(const UnresolvedNativeFrame& item);
 
     template<typename T>
@@ -296,6 +296,9 @@ template<typename T>
 bool inline RecordWriter::writeIntegralDelta2(const T& prev, T new_val)
 {
     ssize_t delta = new_val - prev;
+    if (delta < 0) {
+        assert("1 == 2");
+    }
     return writeSignedVarint(delta);
 }
 
@@ -428,8 +431,9 @@ bool inline RecordWriter::writeRecord(const T& item)
     return ret;
 }
 
-template<typename T> 
-bool inline RecordWriter::writeMsgWithContext(thread_id_t last_tid, thread_id_t tid, const T& item) {  
+template<typename T>
+bool inline RecordWriter::writeMsgWithContext(thread_id_t& last_tid, thread_id_t tid, const T& item)
+{
     std::lock_guard<std::mutex> lock(d_mutex);
     if (last_tid != tid) {
         last_tid = tid;
@@ -443,7 +447,9 @@ bool inline RecordWriter::writeMsgWithContext(thread_id_t last_tid, thread_id_t 
     return ret;
 }
 
-bool inline RecordWriter::writeUnresolvedNativeFrameMsg(const UnresolvedNativeFrame& item) {
+bool inline RecordWriter::writeUnresolvedNativeFrameMsg(const UnresolvedNativeFrame& item)
+{
+    std::lock_guard<std::mutex> lock(d_mutex);
     static size_t cnt = 0;
     if (++cnt % 1 == 0) {
         MY_DEBUG("write unresolved native frame - 5 - native trace index msg : %llu", cnt);
@@ -455,7 +461,7 @@ bool inline RecordWriter::writeUnresolvedNativeFrameMsg(const UnresolvedNativeFr
 }
 
 template<typename T>
-bool inline RecordWriter::writeRecordMsg(const T& item)   // multi threads write
+bool inline RecordWriter::writeRecordMsg(const T& item)  // multi threads write
 {
     std::lock_guard<std::mutex> lock(d_mutex);
     Msg* msg = getOneAvaiableMsgNode();
@@ -465,7 +471,9 @@ bool inline RecordWriter::writeRecordMsg(const T& item)   // multi threads write
 }
 
 template<typename T>
-bool inline RecordWriter::writeThreadSpecificRecordMsg(thread_id_t tid, const T& item)  // only one thread write
+bool inline RecordWriter::writeThreadSpecificRecordMsg(
+        thread_id_t tid,
+        const T& item)  // only one thread write
 {
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
     if (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY) {
@@ -518,10 +526,11 @@ bool inline RecordWriter::writeRecordUnsafe(const FramePop& record)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const FramePop& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write memory FramePop msg - type 9: %llu", cnt);
     }
-    msg->token = {RecordType::FRAME_POP, record.count};;
+    msg->token = {RecordType::FRAME_POP, record.count};
+    ;
     return true;
 }
 
@@ -540,7 +549,7 @@ bool inline RecordWriter::writeRecordUnsafe(const FramePush& record)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const FramePush& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write memory FramePush msg - type 4: %llu", cnt);
     }
     msg->token = {RecordType::FRAME_PUSH, 0};
@@ -570,7 +579,7 @@ bool inline RecordWriter::writeRecordUnsafe(const MemoryRecord& record)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const MemoryRecord& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write memory record msg - 11: %llu", cnt);
     }
     msg->token = {RecordType::MEMORY_RECORD, 0};
@@ -640,7 +649,7 @@ bool inline RecordWriter::writeRecordUnsafe(const Segment& record)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const Segment& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write memory Segment msg - type 8: %llu", cnt);
     }
     msg->token = {RecordType::SEGMENT, 0};
@@ -719,7 +728,7 @@ bool inline RecordWriter::writeRecordUnsafe(const AllocationRecord& record)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const AllocationRecord& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write AllocationRecord msg - type 1: %llu", cnt);
     }
     d_stats.n_allocations += 1;
@@ -759,7 +768,7 @@ bool inline RecordWriter::writeRecordUnsafe(const NativeAllocationRecord& record
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const NativeAllocationRecord& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write NativeAllocationRecord msg - type 2: %llu", cnt);
     }
     d_stats.n_allocations += 1;
@@ -797,10 +806,10 @@ bool inline RecordWriter::writeRecordUnsafe(const pyrawframe_map_val_t& item)
            && writeIntegralDelta(&d_last.python_line_number, item.second.lineno);
 }
 
-bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const pyrawframe_map_val_t& item)
+bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const pyrawframe_map_val_t& item) // RawFrame
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write pyrawframe_map_val_t msg - type 3: %llu", cnt);
     }
     d_stats.n_frames += 1;
@@ -809,16 +818,16 @@ bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const pyrawframe_map_va
     msg->d_last.python_frame_id = d_last.python_frame_id;
     msg->d_last.python_line_number = d_last.python_line_number;
 
-    msg->d_pyrawframe.frame_id = item.first;
     d_last.python_frame_id = item.first;
+    d_last.python_line_number = item.second.lineno;
+
+    msg->d_pyrawframe.frame_id = item.first;
+    msg->d_pyrawframe.lineno = item.second.lineno;
 
     // size_t n = strlen(item.second.filename) + 1;
     // msg->d_pyrawframe.filename = (char *)malloc(sizeof(char) * n);
     // memcpy(msg->d_pyrawframe.filename, item.second.filename, n);
     copyChar(msg->d_pyrawframe.filename, item.second.filename);  // notice length overflow
-
-    msg->d_pyrawframe.lineno = item.second.lineno;
-    d_last.python_line_number = item.second.lineno;
 
     // n = strlen(item.second.function_name) + 1;
     // msg->d_pyrawframe.function_name = (char *)malloc(sizeof(char) * n);
@@ -849,7 +858,7 @@ bool inline RecordWriter::writeRecordUnsafe(const SegmentHeader& item)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const SegmentHeader& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write SegmentHeader msg - type 7: %llu", cnt);
     }
     msg->token = {RecordType::SEGMENT_HEADER, 0};
@@ -898,15 +907,15 @@ bool inline RecordWriter::writeRecordUnsafe(const UnresolvedNativeFrame& record)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const UnresolvedNativeFrame& record)
 {
     static size_t cnt = 0;
-    if (++cnt % 1 == 0 ) {
+    if (++cnt % 1 == 0) {
         MY_DEBUG("write UnresolvedNativeFrame msg - type 3: %llu", cnt);
     }
     msg->token = {RecordType::NATIVE_TRACE_INDEX, 0};
-    msg->d_last.instruction_pointer = d_last.instruction_pointer;
-    msg->d_last.native_frame_id = d_last.native_frame_id;
-
     msg->d_native_frame_record.ip = record.ip;
     msg->d_native_frame_record.index = record.index;
+
+    msg->d_last.instruction_pointer = d_last.instruction_pointer;
+    msg->d_last.native_frame_id = d_last.native_frame_id;
 
     d_last.instruction_pointer = record.ip;
     d_last.native_frame_id = record.index;

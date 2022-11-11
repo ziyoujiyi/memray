@@ -68,7 +68,7 @@ SnapshotAllocationAggregator::addCpuSample(const CpuSample& cpuSample)
 void
 SnapshotAllocationAggregator::addAllocation(const Allocation& allocation)
 {
-    //MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id, allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
+    MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id, allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
     switch (hooks::allocatorKind(allocation.allocator)) {
         case hooks::AllocatorKind::SIMPLE_ALLOCATOR: {
             d_ptr_to_allocation[allocation.address] = allocation;

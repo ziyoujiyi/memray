@@ -314,14 +314,13 @@ cdef class AllocationRecord:
         if self._native_stack_trace is None:
             if self.allocator in (AllocatorType.FREE, AllocatorType.MUNMAP):
                 raise NotImplementedError("Stack traces for deallocations aren't captured.")
-
+            print("allocation frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
             if max_stacks is None:
                 self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
                         self._tuple[6], self._tuple[7])
             else:
                 self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
                         self._tuple[6], self._tuple[7], max_stacks)
-            #print("allocation frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
         return self._native_stack_trace
 
     cdef _is_eval_frame(self, object symbol):
@@ -827,7 +826,7 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-        #print("memory_records_to_process: ", records_to_process)
+        print("memory_records_to_process: ", records_to_process)
         cdef ProgressIndicator progress_indicator = ProgressIndicator(
             "Processing allocation records",
             total=records_to_process,

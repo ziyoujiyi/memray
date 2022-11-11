@@ -261,7 +261,7 @@ int
 PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
 {
     // MY_DEBUG("entering pushPythonFrame >>> ");
-	installGreenletTraceFunctionIfNeeded();
+    installGreenletTraceFunctionIfNeeded();
 
     PyCodeObject* code = compat::frameGetCode(frame);
     const char* function = PyUnicode_AsUTF8(code->co_name);
@@ -278,7 +278,7 @@ PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
     // It doesn't matter to the reader, and is more efficient.
     bool is_entry_frame = !s_native_tracking_enabled || compat::isEntryFrame(frame);
     pushLazilyEmittedFrame({frame, {function, filename, 0, is_entry_frame}, FrameState::NOT_EMITTED});
-    PythonStackTracker::get().emitPendingPushesAndPops();
+    // PythonStackTracker::get().emitPendingPushesAndPops();
     return 0;
 }
 
@@ -297,7 +297,7 @@ void
 PythonStackTracker::popPythonFrame()
 {
     // MY_DEBUG("entering popPythonFrame........");
-	installGreenletTraceFunctionIfNeeded();
+    installGreenletTraceFunctionIfNeeded();
 
     if (!d_stack || d_stack->empty()) {
         return;
@@ -309,7 +309,7 @@ PythonStackTracker::popPythonFrame()
     }
     d_stack->pop_back();
     invalidateMostRecentFrameLineNumber();
-    PythonStackTracker::get().emitPendingPushesAndPops();
+    // PythonStackTracker::get().emitPendingPushesAndPops();
 }
 
 void
@@ -472,7 +472,7 @@ void
 PythonStackTracker::installProfileHooks()
 {
     MY_DEBUG("entering install Profile hooks >>>");
-	assert(PyGILState_Check());
+    assert(PyGILState_Check());
 
     // Uninstall any existing profile function in all threads. Do this before
     // installing ours, since we could lose the GIL if the existing profile arg
@@ -529,7 +529,8 @@ Tracker::Tracker(
 , d_follow_fork(follow_fork)
 , d_trace_python_allocators(trace_python_allocators)
 {
-    // Note: this must be set before the hooks are installed.
+    MY_DEBUG("main thread id: %lld ", thread_id());
+	// Note: this must be set before the hooks are installed.
     d_instance = this;
     unsigned int cpu_interval = 11;  // ms
 
@@ -559,7 +560,7 @@ Tracker::Tracker(
     }
 
     struct sigaction sa;
-	memset(&sa, 0, sizeof(sa));
+    memset(&sa, 0, sizeof(sa));
     sa.sa_handler = trackCpu;
     //  sigaddset(&sa.sa_mask,SIGQUIT);
     //  sigaddset(&sa.sa_mask,SIGTERM)
@@ -587,12 +588,12 @@ Tracker::Tracker(
         LOG(ERROR) << "set timer failed: " << ret;
     }
     MY_DEBUG("tracker is not actived!");
-	d_background_thread =
+    d_patcher.overwrite_symbols();
+    d_background_thread =
             std::make_unique<BackgroundThread>(d_writer, d_other_writer, memory_interval, cpu_interval);
     d_background_thread->start();
     d_background_thread->startWriteRecord();
-    d_patcher.overwrite_symbols();
-	tracking_api::Tracker::activate();
+    tracking_api::Tracker::activate();
 }
 
 Tracker::~Tracker()
@@ -607,12 +608,12 @@ Tracker::~Tracker()
         unregisterPymallocHooks();
     }
     PythonStackTracker::removeProfileHooks();
-    
-        d_writer->writeTrailer();
-        d_writer->writeHeader(true);
-    
-    //d_writer->writeTrailerMsg();
-    //d_writer->writeHeaderMsg(true);
+
+    d_writer->writeTrailer();
+    d_writer->writeHeader(true);
+
+    // d_writer->writeTrailerMsg();
+    // d_writer->writeHeaderMsg(true);
 
     d_writer.reset();
 
@@ -717,8 +718,8 @@ Tracker::BackgroundThread::startWriteRecord()
 {
     assert(d_write_thread.get_id() == std::thread::id());
     d_write_thread = std::thread([&]() -> void {
-        MY_DEBUG("entering BackgroundThread::startWriteRecord >>>");
-		RecursionGuard::isActive = true;
+        MY_DEBUG("entering BackgroundThread::startWriteRecord  %llu >>>", std::thread::id());
+        RecursionGuard::isActive = true;
         Msg* msg_ptr = nullptr;
         while (true) {
             if (d_stop_writer) {
@@ -733,13 +734,13 @@ Tracker::BackgroundThread::startWriteRecord()
                     return;
                 }
             }
-			{
-				RecursionGuard guard;
-				bool ret = d_writer->procRecordMsg(msg_ptr);
-				if (ret == false) {
-					continue;
-				}
-			}
+            {
+                RecursionGuard guard;
+                bool ret = d_writer->procRecordMsg(msg_ptr);
+                if (ret == false) {
+                    continue;
+                }
+            }
             d_writer->popOneMsg();
         }
         MY_DEBUG("exit BackgroundThread::startWriteRecord <<<");
@@ -860,7 +861,7 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 void
 Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
 {
-	NativeTrace* mem_trace_single = &NativeTrace::getInstance(0);
+    NativeTrace* mem_trace_single = &NativeTrace::getInstance(0);
     static size_t blocked_allocation = 0;
     if (RecursionGuard::isActive || !Tracker::isActive()) {
         if (++blocked_allocation % 100 == 0) {
@@ -870,19 +871,23 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     }
     RecursionGuard guard;
     stopTrace();
-    // PythonStackTracker::get().emitPendingPushesAndPops();
+    PythonStackTracker::get().emitPendingPushesAndPops();
     static size_t allocation_record_cnt = 0;
     if (++allocation_record_cnt % 1 == 0) {
         MY_DEBUG("processed allocation: %lld times", allocation_record_cnt);
     }
     if (d_unwind_native_frames) {
-        mem_trace_single->fill(2);
+        bool ret = mem_trace_single->fill(2);
+        frame_id_t native_index = 0;
         mem_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
-        frame_id_t native_index = d_writer->d_native_trace_tree.getTraceIndex(
-                mem_trace_single,
-                [&](frame_id_t ip, uint32_t index) {
-                    return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
-                });
+        if (ret) {
+            native_index = d_writer->d_native_trace_tree.getTraceIndex(
+                    mem_trace_single,
+                    [&](frame_id_t ip, uint32_t index) {
+                        return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
+                    });
+        }
+        MY_DEBUG("frame tree native index: %lld", native_index);
         NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
         if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;
@@ -1049,7 +1054,7 @@ Tracker::popFrames(uint32_t count)
         deactivate();
         return false;
     }
-	return true;
+        return true;
     */
     while (count) {
         uint8_t to_pop = (count > 16 ? 16 : count);
@@ -1268,7 +1273,7 @@ install_trace_function()
 {
     assert(PyGILState_Check());
     RecursionGuard guard;
-	MY_DEBUG("entering install trace function >>>");
+    MY_DEBUG("entering install trace function >>>");
     // Don't clear the python stack if we have already registered the tracking
     // function with the current thread. This happens when PyGILState_Ensure is
     // called and a thread state with our hooks installed already exists.

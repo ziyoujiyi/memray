@@ -181,6 +181,10 @@ RecordReader::readIntegralDelta(T* prev, T* new_val)
         return false;
     }
     *prev += delta;
+    if (*prev < 0) {
+        MY_DEBUG("break...... delta: %d", delta);
+        assert(1 == 0);
+    }
     *new_val = *prev;
     return true;
 }
