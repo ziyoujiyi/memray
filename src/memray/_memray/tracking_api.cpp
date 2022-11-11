@@ -588,11 +588,12 @@ Tracker::Tracker(
         LOG(ERROR) << "set timer failed: " << ret;
     }
     MY_DEBUG("tracker is not actived!");
-    d_patcher.overwrite_symbols();
     d_background_thread =
             std::make_unique<BackgroundThread>(d_writer, d_other_writer, memory_interval, cpu_interval);
     d_background_thread->start();
     d_background_thread->startWriteRecord();
+
+    d_patcher.overwrite_symbols();
     tracking_api::Tracker::activate();
 }
 
@@ -870,7 +871,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
         return;
     }
     RecursionGuard guard;
-    stopTrace();
+    //stopTrace();
     PythonStackTracker::get().emitPendingPushesAndPops();
     static size_t allocation_record_cnt = 0;
     if (++allocation_record_cnt % 1 == 0) {
@@ -900,7 +901,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
             deactivate();
         }
     }
-    startTrace();
+    //startTrace();
 }
 
 void
@@ -910,13 +911,13 @@ Tracker::trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func)
         return;
     }
     RecursionGuard guard;
-    stopTrace();
+    //stopTrace();
     AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
     if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
         std::cerr << "Failed to write output, deactivating tracking" << std::endl;
         deactivate();
     }
-    startTrace();
+    //startTrace();
 }
 
 void
@@ -1123,6 +1124,17 @@ Tracker::createTracker(
             memory_interval,
             follow_fork,
             trace_python_allocators));
+    void* ptr = hooks::malloc(99999999);  // use SysMalloc
+    void* ptr2 = malloc(8888888);  // use SysMalloc ? not sure
+    void* ptr3 = intercept::malloc(6666666);
+    MY_DEBUG("Tracker malloc type: %llu", &hooks::malloc);
+    MY_DEBUG("Tracker malloc type: %llu", &malloc);
+    MY_DEBUG("Tracker malloc type: %llu", intercept::malloc);
+    if (ptr && ptr2 && ptr3) {
+        MY_DEBUG("test native malloc succeed");
+    } else {
+        MY_DEBUG("test native malloc failed");
+    }
     Py_RETURN_NONE;
 }
 
