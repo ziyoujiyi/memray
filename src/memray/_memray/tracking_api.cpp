@@ -1124,6 +1124,7 @@ Tracker::createTracker(
             memory_interval,
             follow_fork,
             trace_python_allocators));
+    MY_DEBUG("Tracker ins created && is activated");
     void* ptr = hooks::malloc(99999999);  // use SysMalloc
     void* ptr2 = malloc(8888888);  // use SysMalloc ? not sure
     void* ptr3 = intercept::malloc(6666666);
