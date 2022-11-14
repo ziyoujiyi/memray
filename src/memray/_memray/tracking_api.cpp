@@ -741,7 +741,10 @@ Tracker::BackgroundThread::startWriteRecord()
             }
             {
                 RecursionGuard guard;
+                Timer t;
+                t.now();
                 bool ret = d_writer->procRecordMsg(msg_ptr);
+                DebugInfo::proc_record_msg_time += t.elapsedNs();
                 if (ret == false) {
                     continue;
                 }
@@ -870,7 +873,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     static Timer t;
     t.now();
     RecursionGuard guard;
-    // stopTrace();
+    //stopTrace();
     /*
         if (d_unwind_native_frames) {
             bool ret = mem_trace_single->fill(2);
@@ -900,7 +903,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
         deactivate();
     }
     //}
-    // startTrace();
+    //startTrace();
     DebugInfo::track_memory_time += t.elapsedNs();
 }
 
@@ -932,8 +935,8 @@ Tracker::invalidate_module_cache_impl()
 static int
 dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size, void* data)
 {
-    // Timer t;
-    // t.now();
+    Timer t;
+    t.now();
     auto writer = reinterpret_cast<RecordWriter*>(data);
     const char* filename = info->dlpi_name;  // object name
     std::string executable;
@@ -982,7 +985,7 @@ dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size
         }
                 */
     }
-    // DebugInfo::dl_open_so_time += t.elapsedNs();
+    DebugInfo::dl_open_so_time += t.elapsedNs();
     return 0;
 }
 #endif
@@ -1116,6 +1119,8 @@ Tracker::createTracker(
         bool follow_fork,
         bool trace_python_allocators)
 {
+    Timer t;
+    t.now();
     // Note: the GIL is used for synchronization of the singleton
     d_instance_owner.reset(new Tracker(
             std::move(record_writer),
@@ -1126,9 +1131,11 @@ Tracker::createTracker(
             trace_python_allocators));
     PythonStackTracker::get().emitPendingPushesAndPops();
     MY_DEBUG("Tracker ins created && is activated");
+    DebugInfo::prepare_tracker_ins_time += t.elapsedNs();
+    /*
     void* ptr = hooks::malloc(99999999);  // use SysMalloc
-    void* ptr2 = malloc(8888888);  // use SysMalloc ? not sure
-    void* ptr3 = intercept::malloc(6666666);
+    void* ptr2 = malloc(8888888);  // use selfdefine malloc
+    void* ptr3 = intercept::malloc(6666666);  // use selfdefine malloc
     MY_DEBUG("Tracker malloc type: %llu", &hooks::malloc);
     MY_DEBUG("Tracker malloc type: %llu", &malloc);
     MY_DEBUG("Tracker malloc type: %llu", intercept::malloc);
@@ -1137,6 +1144,7 @@ Tracker::createTracker(
     } else {
         MY_DEBUG("test native malloc failed");
     }
+    */
     Py_RETURN_NONE;
 }
 

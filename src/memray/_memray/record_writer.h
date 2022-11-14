@@ -18,7 +18,7 @@ namespace memray::tracking_api {
 
 struct SegmentHeaderInfo
 {
-    std::vector<char> filename = decltype(filename)(96);
+    std::vector<char> filename = decltype(filename)(256);
     size_t num_segments;
     uintptr_t addr;
 };
@@ -26,8 +26,8 @@ struct SegmentHeaderInfo
 struct RawFrameInfo
 {
     frame_id_t frame_id;
-    std::vector<char> function_name = decltype(function_name)(64);
-    std::vector<char> filename = decltype(filename)(64);
+    std::vector<char> function_name = decltype(function_name)(256);
+    std::vector<char> filename = decltype(filename)(256);
     int lineno;
     bool is_entry_frame;
 };
@@ -49,11 +49,11 @@ struct Msg
     CpuSampleRecord d_cpu_sample;
     NativeCpuSampleRecord d_native_cpu_sample;
     ContextSwitch d_cs;
-    std::vector<char> d_thread_name = decltype(d_thread_name)(16);
+    std::vector<char> d_thread_name = decltype(d_thread_name)(64);
     SegmentHeaderInfo d_sgh;
     Segment d_sg;
 };
-using MsgQ = SPSCQueueOPT<Msg, 128>;
+using MsgQ = SPSCQueueOPT<Msg, 4096>;
 
 class RecordWriter
 {
@@ -452,9 +452,12 @@ template<typename T>
 bool inline RecordWriter::writeRecordMsg(const T& item)  // multi threads write
 {
     std::lock_guard<std::mutex> lock(d_mutex);
+    static Timer t;
+    t.now();
     Msg* msg = getOneAvaiableMsgNode();
     bool ret = writeRecordMsgUnsafe(msg, item);
     pushMsgNode();
+    DebugInfo::write_record_msg_time += t.elapsedNs();
     return ret;
 }
 
@@ -463,6 +466,8 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
         thread_id_t tid,
         const T& item)  // only one thread write
 {
+    Timer t;
+    t.now();
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
     if (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY) {
         frame_id_t native_index = 0;
@@ -476,6 +481,7 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
         cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
     }
     bool ret = writeMsgWithContext(d_last.thread_id, tid, item);
+    DebugInfo::write_threadspecific_record_msg_time += t.elapsedNs();
     return ret;
 }
 

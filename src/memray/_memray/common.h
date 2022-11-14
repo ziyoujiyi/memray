@@ -79,6 +79,10 @@ public:
     static thread_local uint64_t backtrace_time;
     static thread_local uint64_t build_call_tree_time;
     static thread_local uint64_t dl_open_so_time;
+    static thread_local uint64_t write_record_msg_time;
+    static thread_local uint64_t write_threadspecific_record_msg_time;
+    static thread_local uint64_t prepare_tracker_ins_time;
+    static thread_local uint64_t proc_record_msg_time;
 
     static thread_local size_t total_used_msg_node;
     static thread_local size_t get_avaiable_msg_node_failed;
@@ -104,15 +108,18 @@ public:
 
     static thread_local size_t add_cpu_sample;
     static thread_local size_t add_allocation;
+    #define MOD 1000000
 
     static void printTimeCost() {
-        const uint64_t MOD = 1e6;
         MY_DEBUG("*******************************************************");
         MY_DEBUG("track_memory_time(ms): %llu", track_memory_time / MOD);
         MY_DEBUG("track_cpu_time(ms): %llu", track_cpu_time / MOD);
         MY_DEBUG("backtrace_time(ms): %llu", backtrace_time / MOD);
         MY_DEBUG("build_call_tree_time(ms): %llu", build_call_tree_time / MOD);
         MY_DEBUG("dl_open_so_time(ms): %llu", dl_open_so_time / MOD);
+        MY_DEBUG("write_record_msg_time(ms): %llu", write_record_msg_time / MOD);
+        MY_DEBUG("write_threadspecific_record_msg_time(ms): %llu", write_threadspecific_record_msg_time / MOD);
+        MY_DEBUG("prepare_tracker_ins_time(ms): %llu", prepare_tracker_ins_time / MOD);
     }
 
     static void printWriteDebugCnt()
@@ -143,6 +150,7 @@ public:
     static void printProcessDebugCnt() {
         MY_DEBUG("*******************************************************");
         MY_DEBUG("total_processed_msg: %llu", total_processed_msg);
+        MY_DEBUG("proc_record_msg_time(ms): %llu", proc_record_msg_time / MOD);
     }
     
     static void printReadDebugCnt()

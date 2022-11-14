@@ -121,7 +121,7 @@ benchmark_requires = [
 ]
 
 
-TEST_BUILD = True
+TEST_BUILD = False
 if "--test-build" in sys.argv:
     TEST_BUILD = True
     sys.argv.remove("--test-build")

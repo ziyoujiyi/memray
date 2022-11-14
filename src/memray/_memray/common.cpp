@@ -9,6 +9,10 @@ thread_local uint64_t DebugInfo::track_cpu_time = 0;
 thread_local uint64_t DebugInfo::backtrace_time = 0;
 thread_local uint64_t DebugInfo::build_call_tree_time = 0;
 thread_local uint64_t DebugInfo::dl_open_so_time = 0;
+thread_local uint64_t DebugInfo::write_record_msg_time = 0;
+thread_local uint64_t DebugInfo::write_threadspecific_record_msg_time = 0;
+thread_local uint64_t DebugInfo::prepare_tracker_ins_time = 0;
+thread_local uint64_t DebugInfo::proc_record_msg_time = 0;
 
 thread_local size_t DebugInfo::total_used_msg_node = 0;
 thread_local size_t DebugInfo::get_avaiable_msg_node_failed = 0;
