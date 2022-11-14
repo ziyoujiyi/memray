@@ -76,7 +76,7 @@ class RecordWriter
                 DebugInfo::total_used_msg_node++;
                 return node;
             }
-            MY_DEBUG("get one avaiable msg node failed!");
+            DebugInfo::get_avaiable_msg_node_failed++;
         }
         return nullptr;
     }
@@ -470,7 +470,7 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
                 d_native_trace_tree.getTraceIndex(cpu_trace_single, [&](frame_id_t ip, uint32_t index) {
                     return writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
                 });
-        MY_DEBUG("cpu - get frame tree native index: %lld", native_index);
+        //MY_DEBUG("cpu - get frame tree native index: %lld", native_index);
         NativeCpuSampleRecord record{hooks::Allocator::CPU_SAMPLING, native_index};
         bool ret = writeMsgWithContext(d_last.thread_id, cpu_trace_single->backtrace_thread_id, record);
         cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;

@@ -85,7 +85,7 @@ class NativeTrace
     std::shared_ptr<size_t> d_cnt_ptr;
     std::shared_ptr<std::vector<ip_t>> d_sizes_ptr;
     std::shared_ptr<std::vector<ip_t>> d_data_ptr;
-    std::int32_t d_skip;
+    std::int32_t d_skip{0};
 
   private:
     NativeTrace(int flag)
@@ -115,14 +115,17 @@ class NativeTrace
   public:
     __attribute__((always_inline)) inline bool fill(size_t skip)
     {
+        static Timer t;
+        t.now();
         size_t size = unw_backtrace(
                 (void**)d_data_ptr->data(),
                 NATIVE_TRACE_MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man
                                          // https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
         if (likely(size > 0)) {
-            d_skip = 0;
             (*d_sizes_ptr)[*d_cnt_ptr] = size;
+            d_skip = size > 64 ? (size - 64) : 0;
             //(*d_cnt_ptr)++;
+            DebugInfo::backtrace_time += t.elapsedNs();
             return true;
         } else {
             return false;
@@ -174,6 +177,8 @@ class FrameTree
     size_t getTraceIndex(const T* stack_trace, const tracecallback_t& callback)
     {
         std::lock_guard<std::mutex> lock(d_mutex);
+        static Timer t;
+        t.now();
         index_t index = 0;
         int64_t backtrace_idx = 0;
         int64_t size = stack_trace->d_sizes_ptr->at(backtrace_idx);
@@ -183,6 +188,7 @@ class FrameTree
             frame_id_t frame = stack_trace->d_data_ptr->at(i);
             index = getTraceIndexUnsafe(index, frame, callback);
         }
+        DebugInfo::build_call_tree_time += t.elapsedNs();
         return index;
     }
 

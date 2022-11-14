@@ -19,13 +19,13 @@
 #include <unistd.h>
 #include <utility>
 
+#include "common.h"
 #include "compat.h"
 #include "exceptions.h"
 #include "hooks.h"
 #include "record_writer.h"
 #include "records.h"
 #include "tracking_api.h"
-#include "common.h"
 
 using namespace memray::exception;
 using namespace std::chrono_literals;
@@ -170,7 +170,7 @@ PythonStackTracker::emitPendingPushesAndPops()
     // - Any number of EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED frames
     // - 0 or 1 EMITTED_BUT_LINE_NUMBER_MAY_HAVE_CHANGED frame
     // - Any number of NOT_EMITTED frames
-    //MY_DEBUG("entering emitPendingPushesAndPops >>>");
+    // MY_DEBUG("entering emitPendingPushesAndPops >>>");
     auto it = d_stack->rbegin();
     for (; it != d_stack->rend(); ++it) {
         if (it->state == FrameState::NOT_EMITTED) {
@@ -262,7 +262,7 @@ PythonStackTracker::reloadStackIfTrackerChanged()
 int
 PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
 {
-    //MY_DEBUG("entering pushPythonFrame >>> ");
+    // MY_DEBUG("entering pushPythonFrame >>> ");
     installGreenletTraceFunctionIfNeeded();
 
     PyCodeObject* code = compat::frameGetCode(frame);
@@ -529,8 +529,8 @@ Tracker::Tracker(
 , d_follow_fork(follow_fork)
 , d_trace_python_allocators(trace_python_allocators)
 {
-    MY_DEBUG("main thread id: %lld ", thread_id());
-	// Note: this must be set before the hooks are installed.
+    MY_DEBUG("main thread id: %lld >>> ", thread_id());
+    // Note: this must be set before the hooks are installed.
     d_instance = this;
     unsigned int cpu_interval = 11;  // ms
 
@@ -622,6 +622,7 @@ Tracker::~Tracker()
     d_instance = nullptr;
 
     DebugInfo::printWriteDebugCnt();
+    DebugInfo::printTimeCost();
 }
 
 Tracker::BackgroundThread::BackgroundThread(
@@ -721,7 +722,7 @@ Tracker::BackgroundThread::startWriteRecord()
 {
     assert(d_write_thread.get_id() == std::thread::id());
     d_write_thread = std::thread([&]() -> void {
-        MY_DEBUG("entering BackgroundThread::startWriteRecord  %llu >>>", std::thread::id());
+        MY_DEBUG("entering BackgroundThread::startWriteRecord  %llu >>>", std::this_thread::get_id());
         RecursionGuard::isActive = true;
         Msg* msg_ptr = nullptr;
         while (true) {
@@ -734,6 +735,7 @@ Tracker::BackgroundThread::startWriteRecord()
                     break;
                 }
                 if (d_stop_writer) {
+                    DebugInfo::printProcessDebugCnt();
                     return;
                 }
             }
@@ -839,20 +841,22 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
         DebugInfo::blocked_cpu_sample++;
         return;
     }
-
-    DebugInfo::processed_cpu_sample++;
-    if (d_unwind_native_frames) {
-        cpu_trace_single->fill(2);
-        cpu_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
-        cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::READ_ONLY;
-    } else {
-        CpuSampleRecord record{func};
-        if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
-            std::cerr << "Failed to write output, deactivating tracking" << std::endl;
-            deactivate();
-        }
-    }
+    static Timer t;
+    t.now();
+    DebugInfo::tracked_cpu_sample++;
+    // if (d_unwind_native_frames) {
+    cpu_trace_single->fill(2);
+    cpu_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
+    cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::READ_ONLY;
+    //} else {
+    //    CpuSampleRecord record{func};
+    //    if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
+    //        std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+    //        deactivate();
+    //    }
+    //}
     startTrace();
+    DebugInfo::track_cpu_time += t.elapsedNs();
 }
 
 void
@@ -863,35 +867,41 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
         DebugInfo::blocked_allocation++;
         return;
     }
+    static Timer t;
+    t.now();
     RecursionGuard guard;
-    //stopTrace();
-    //PythonStackTracker::get().emitPendingPushesAndPops();
-    DebugInfo::processed_allocation++;
-    if (d_unwind_native_frames) {
-        bool ret = mem_trace_single->fill(2);
-        frame_id_t native_index = 0;
-        mem_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
-        if (ret) {
-            native_index = d_writer->d_native_trace_tree.getTraceIndex(
-                    mem_trace_single,
-                    [&](frame_id_t ip, uint32_t index) {
-                        return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
-                    });
-        }
-        MY_DEBUG("mem - get frame tree native index: %lld", native_index);
-        NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
-        if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
-            std::cerr << "Failed to write output, deactivating tracking" << std::endl;
-            deactivate();
-        }
-    } else {
-        AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
-        if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
-            std::cerr << "Failed to write output, deactivating tracking" << std::endl;
-            deactivate();
-        }
+    // stopTrace();
+    /*
+        if (d_unwind_native_frames) {
+            bool ret = mem_trace_single->fill(2);
+            frame_id_t native_index = 0;
+            mem_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
+            if (ret) {
+                native_index = d_writer->d_native_trace_tree.getTraceIndex(
+                        mem_trace_single,
+                        [&](frame_id_t ip, uint32_t index) {
+                            return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip,
+       index});
+                        });
+            }
+            DebugInfo::tracked_native_allocation++;
+            // MY_DEBUG("mem - get frame tree native index: %lld", native_index);
+            NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
+            if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
+                std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+                deactivate();
+            }
+    */
+    //} else {
+    DebugInfo::tracked_allocation++;
+    AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
+    if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
+        std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+        deactivate();
     }
-    //startTrace();
+    //}
+    // startTrace();
+    DebugInfo::track_memory_time += t.elapsedNs();
 }
 
 void
@@ -901,13 +911,13 @@ Tracker::trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func)
         return;
     }
     RecursionGuard guard;
-    //stopTrace();
+    // stopTrace();
     AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
     if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
         std::cerr << "Failed to write output, deactivating tracking" << std::endl;
         deactivate();
     }
-    //startTrace();
+    // startTrace();
 }
 
 void
@@ -922,6 +932,8 @@ Tracker::invalidate_module_cache_impl()
 static int
 dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size, void* data)
 {
+    // Timer t;
+    // t.now();
     auto writer = reinterpret_cast<RecordWriter*>(data);
     const char* filename = info->dlpi_name;  // object name
     std::string executable;
@@ -970,7 +982,7 @@ dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size
         }
                 */
     }
-
+    // DebugInfo::dl_open_so_time += t.elapsedNs();
     return 0;
 }
 #endif
@@ -993,9 +1005,8 @@ Tracker::updateModuleCacheImpl()
         deactivate();
     }*/
 
-    dl_iterate_phdr(
-            &dl_iterate_phdr_callback,
-            d_writer.get());  // https://www.onitroad.com/jc/linux/man-pages/linux/man3/dl_iterate_phdr.3.html
+    dl_iterate_phdr(&dl_iterate_phdr_callback, d_writer.get());
+    // https://www.onitroad.com/jc/linux/man-pages/linux/man3/dl_iterate_phdr.3.html
     // dl_iterate_phdr(&dl_iterate_phdr_callback, d_other_writer.get());
 }
 
