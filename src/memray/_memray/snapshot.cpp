@@ -61,6 +61,7 @@ void
 SnapshotAllocationAggregator::addCpuSample(const CpuSample& cpuSample)
 {
     //MY_DEBUG("add cpu_sample - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_cpu_samples: %d", cpuSample.tid, cpuSample.native_frame_id, cpuSample.native_segment_generation, cpuSample.n_cpu_samples);
+    DebugInfo::add_cpu_sample++;
     d_ptr_to_cpuSample.emplace_back(cpuSample);
     return;
 }
@@ -68,7 +69,8 @@ SnapshotAllocationAggregator::addCpuSample(const CpuSample& cpuSample)
 void
 SnapshotAllocationAggregator::addAllocation(const Allocation& allocation)
 {
-    MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id, allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
+    //MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id, allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
+    DebugInfo::add_allocation++;
     switch (hooks::allocatorKind(allocation.allocator)) {
         case hooks::AllocatorKind::SIMPLE_ALLOCATOR: {
             d_ptr_to_allocation[allocation.address] = allocation;

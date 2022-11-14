@@ -73,7 +73,7 @@ class RecordWriter
         while (true) {
             Msg* node = d_msg_q->alloc();
             if (node) {
-                DebugInfo::total_used_msg_node_num++;
+                DebugInfo::total_used_msg_node++;
                 return node;
             }
             MY_DEBUG("get one avaiable msg node failed!");
@@ -302,13 +302,10 @@ bool inline RecordWriter::writeIntegralDelta2(const T& prev, T new_val)
 bool inline RecordWriter::procRecordMsg(const Msg* msg)
 {
     if (msg == nullptr) {
-        // MY_DEBUG("can not get msg from spsq!");
         return false;
     }
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("total processed msg: %llu, record type: %d", cnt, msg->token.record_type);
-    }
+    DebugInfo::total_processed_msg++;
+
     switch (msg->token.record_type) {
         case RecordType::OTHER: {
             switch (static_cast<OtherRecordType>(msg->token.flags)) {
@@ -373,7 +370,6 @@ bool inline RecordWriter::procRecordMsg(const Msg* msg)
 
 bool inline RecordWriter::writeHeaderMsg(bool seek_to_start)
 {
-    MY_DEBUG("entering RecordWriter::writeHeaderMsg >>>");
     Msg* msg = getOneAvaiableMsgNode();
     msg->seek_to_start = seek_to_start;
     msg->token = {RecordType::OTHER, int(OtherRecordType::HEADER)};
@@ -408,7 +404,6 @@ bool inline RecordWriter::procHeaderMsg(bool seek_to_start, const HeaderRecord& 
 
 bool inline RecordWriter::writeTrailerMsg()
 {
-    MY_DEBUG("entering RecordWriter::writeTrailerMsg >>>");
     Msg* msg = getOneAvaiableMsgNode();
     msg->token = {RecordType::OTHER, int(OtherRecordType::TRAILER)};
     pushMsgNode();
@@ -447,10 +442,6 @@ bool inline RecordWriter::writeMsgWithContext(thread_id_t& last_tid, thread_id_t
 bool inline RecordWriter::writeUnresolvedNativeFrameMsg(const UnresolvedNativeFrame& item)
 {
     std::lock_guard<std::mutex> lock(d_mutex);
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write unresolved native frame - 5 - native trace index msg : %llu", cnt);
-    }
     Msg* msg = getOneAvaiableMsgNode();
     bool ret = writeRecordMsgUnsafe(msg, item);
     pushMsgNode();
@@ -479,7 +470,7 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
                 d_native_trace_tree.getTraceIndex(cpu_trace_single, [&](frame_id_t ip, uint32_t index) {
                     return writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
                 });
-        static size_t cnt = 0;
+        MY_DEBUG("cpu - get frame tree native index: %lld", native_index);
         NativeCpuSampleRecord record{hooks::Allocator::CPU_SAMPLING, native_index};
         bool ret = writeMsgWithContext(d_last.thread_id, cpu_trace_single->backtrace_thread_id, record);
         cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
@@ -522,12 +513,9 @@ bool inline RecordWriter::writeRecordUnsafe(const FramePop& record)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const FramePop& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write memory FramePop msg - type 9: %llu", cnt);
-    }
+    DebugInfo::write_frame_pop_msg++;
+
     msg->token = {RecordType::FRAME_POP, record.count};
-    ;
     return true;
 }
 
@@ -545,10 +533,8 @@ bool inline RecordWriter::writeRecordUnsafe(const FramePush& record)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const FramePush& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write memory FramePush msg - type 4: %llu", cnt);
-    }
+    DebugInfo::write_frame_push_msg++;
+
     msg->token = {RecordType::FRAME_PUSH, 0};
     msg->d_last.python_frame_id = d_last.python_frame_id;
     msg->d_frame_push.frame_id = record.frame_id;
@@ -575,10 +561,8 @@ bool inline RecordWriter::writeRecordUnsafe(const MemoryRecord& record)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const MemoryRecord& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write memory record msg - 11: %llu", cnt);
-    }
+    DebugInfo::write_memory_record_msg++;
+
     msg->token = {RecordType::MEMORY_RECORD, 0};
     msg->d_memory_record.ms_since_epoch = record.ms_since_epoch;
     msg->d_memory_record.rss = record.rss;
@@ -620,10 +604,6 @@ bool inline RecordWriter::writeRecordUnsafe(const ContextSwitch& record)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const ContextSwitch& record)
 {
-    static size_t cnt = 0;
-    if (cnt++ % 1 == 0) {
-        MY_DEBUG("write context switch - type 12 msg - %llu", cnt);
-    }
     msg->token = {RecordType::CONTEXT_SWITCH, 0};
     msg->d_cs = record;
     return true;
@@ -639,16 +619,14 @@ bool inline RecordWriter::procContextSwitchMsg(
 
 bool inline RecordWriter::writeRecordUnsafe(const Segment& record)
 {
+    DebugInfo::write_segment_msg++;
+
     RecordTypeAndFlags token{RecordType::SEGMENT, 0};
     return writeSimpleType(token) && writeSimpleType(record.vaddr) && writeVarint(record.memsz);
 }
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const Segment& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write memory Segment msg - type 8: %llu", cnt);
-    }
     msg->token = {RecordType::SEGMENT, 0};
 
     msg->d_sg.vaddr = record.vaddr;
@@ -724,10 +702,8 @@ bool inline RecordWriter::writeRecordUnsafe(const AllocationRecord& record)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const AllocationRecord& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write AllocationRecord msg - type 1: %llu", cnt);
-    }
+    DebugInfo::write_allocation_msg++;
+
     d_stats.n_allocations += 1;
 
     msg->token = {RecordType::ALLOCATION, static_cast<unsigned char>(record.allocator)};
@@ -764,10 +740,8 @@ bool inline RecordWriter::writeRecordUnsafe(const NativeAllocationRecord& record
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const NativeAllocationRecord& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write NativeAllocationRecord msg - type 2: %llu", cnt);
-    }
+    DebugInfo::write_native_allocation_msg++;
+
     d_stats.n_allocations += 1;
     msg->token = {RecordType::ALLOCATION_WITH_NATIVE, static_cast<unsigned char>(record.allocator)};
 
@@ -805,10 +779,8 @@ bool inline RecordWriter::writeRecordUnsafe(const pyrawframe_map_val_t& item)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const pyrawframe_map_val_t& item) // RawFrame
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write pyrawframe_map_val_t msg - type 3: %llu", cnt);
-    }
+    DebugInfo::write_pyrawframe_msg++;
+
     d_stats.n_frames += 1;
 
     msg->token = {RecordType::FRAME_INDEX, !item.second.is_entry_frame};
@@ -847,6 +819,8 @@ bool inline RecordWriter::procFrameIndexMsg(
 
 bool inline RecordWriter::writeRecordUnsafe(const SegmentHeader& item)
 {
+    DebugInfo::write_segment_header_msg++;
+
     RecordTypeAndFlags token{RecordType::SEGMENT_HEADER, 0};
     return writeSimpleType(token) && writeString(item.filename) && writeVarint(item.num_segments)
            && writeSimpleType(item.addr);
@@ -854,10 +828,6 @@ bool inline RecordWriter::writeRecordUnsafe(const SegmentHeader& item)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const SegmentHeader& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write SegmentHeader msg - type 7: %llu", cnt);
-    }
     msg->token = {RecordType::SEGMENT_HEADER, 0};
     msg->d_sgh.filename;
     msg->d_sgh.num_segments = record.num_segments;
@@ -903,10 +873,8 @@ bool inline RecordWriter::writeRecordUnsafe(const UnresolvedNativeFrame& record)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const UnresolvedNativeFrame& record)
 {
-    static size_t cnt = 0;
-    if (++cnt % 1 == 0) {
-        MY_DEBUG("write UnresolvedNativeFrame msg - type 3: %llu", cnt);
-    }
+    DebugInfo::write_unresolvednativeframe_msg++;
+
     msg->token = {RecordType::NATIVE_TRACE_INDEX, 0};
     msg->d_native_frame_record.ip = record.ip;
     msg->d_native_frame_record.index = record.index;

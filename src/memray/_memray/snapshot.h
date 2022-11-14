@@ -188,6 +188,9 @@ class SnapshotAllocationAggregator : public AbstractAggregator
     std::vector<CpuSample> d_ptr_to_cpuSample{};
 
   public:
+    ~SnapshotAllocationAggregator() {
+        DebugInfo::printReadDebugCnt();
+    }
     void addAllocation(const Allocation& allocation) override;
     reduced_snapshot_map_t getSnapshotAllocations(bool merge_threads) override;
 

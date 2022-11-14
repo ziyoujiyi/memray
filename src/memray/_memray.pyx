@@ -314,7 +314,7 @@ cdef class AllocationRecord:
         if self._native_stack_trace is None:
             if self.allocator in (AllocatorType.FREE, AllocatorType.MUNMAP):
                 raise NotImplementedError("Stack traces for deallocations aren't captured.")
-            print("allocation frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
+            #print("allocation frame: {}, index: {}".format(self._tuple[6], self._tuple[7]))
             if max_stacks is None:
                 self._native_stack_trace = self._reader.get().Py_GetNativeStackFrame(
                         self._tuple[6], self._tuple[7])

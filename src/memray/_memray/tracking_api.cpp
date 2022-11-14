@@ -167,10 +167,10 @@ PythonStackTracker::emitPendingPushesAndPops()
     }
 
     // At any time, the stack contains (in this order):
-    // Any number of EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED frames
-    // 0 or 1 EMITTED_BUT_LINE_NUMBER_MAY_HAVE_CHANGED frame
-    // Any number of NOT_EMITTED frames
-    MY_DEBUG("entering emitPendingPushesAndPops >>>");
+    // - Any number of EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED frames
+    // - 0 or 1 EMITTED_BUT_LINE_NUMBER_MAY_HAVE_CHANGED frame
+    // - Any number of NOT_EMITTED frames
+    //MY_DEBUG("entering emitPendingPushesAndPops >>>");
     auto it = d_stack->rbegin();
     for (; it != d_stack->rend(); ++it) {
         if (it->state == FrameState::NOT_EMITTED) {
@@ -194,7 +194,6 @@ PythonStackTracker::emitPendingPushesAndPops()
     }
     auto first_to_emit = it.base();
     size_t sz = d_stack->size();
-    MY_DEBUG("d-stack size: %llu, d_num_pending_pops: %llu", sz, d_num_pending_pops);
     // Emit pending pops
     Tracker::getTracker()->popFrames(d_num_pending_pops);
     d_num_pending_pops = 0;
@@ -263,7 +262,7 @@ PythonStackTracker::reloadStackIfTrackerChanged()
 int
 PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
 {
-    MY_DEBUG("entering pushPythonFrame >>> ");
+    //MY_DEBUG("entering pushPythonFrame >>> ");
     installGreenletTraceFunctionIfNeeded();
 
     PyCodeObject* code = compat::frameGetCode(frame);
@@ -299,7 +298,6 @@ PythonStackTracker::pushLazilyEmittedFrame(const LazilyEmittedFrame& frame)
 void
 PythonStackTracker::popPythonFrame()
 {
-    // MY_DEBUG("entering popPythonFrame........");
     installGreenletTraceFunctionIfNeeded();
 
     if (!d_stack || d_stack->empty()) {
@@ -474,7 +472,6 @@ PythonStackTracker::recordAllStacks()
 void
 PythonStackTracker::installProfileHooks()
 {
-    MY_DEBUG("entering install Profile hooks >>>");
     assert(PyGILState_Check());
 
     // Uninstall any existing profile function in all threads. Do this before
@@ -624,7 +621,7 @@ Tracker::~Tracker()
     // Note: this must not be unset before the hooks are uninstalled.
     d_instance = nullptr;
 
-    DebugInfo::printDebugCnt();
+    DebugInfo::printWriteDebugCnt();
 }
 
 Tracker::BackgroundThread::BackgroundThread(
@@ -691,7 +688,7 @@ Tracker::BackgroundThread::start()
 {
     assert(d_thread.get_id() == std::thread::id());
     d_thread = std::thread([&]() {
-        MY_DEBUG("entering BackgroundThread::start >>>");
+        MY_DEBUG("entering BackgroundThread::start  %llu >>>", std::this_thread::get_id());
         RecursionGuard::isActive = true;
         while (true) {
             {
@@ -715,7 +712,7 @@ Tracker::BackgroundThread::start()
                 }
             }
         }
-        MY_DEBUG("exit BackgroundThread::start <<<");
+        DebugInfo::printMemoryrecordDebugCnt();
     });
 }
 
@@ -749,7 +746,7 @@ Tracker::BackgroundThread::startWriteRecord()
             }
             d_writer->popOneMsg();
         }
-        MY_DEBUG("exit BackgroundThread::startWriteRecord <<<");
+        DebugInfo::printProcessDebugCnt();
     });
 }
 
@@ -834,22 +831,16 @@ Tracker::childFork()
 void
 Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
-    //return;
     stopTrace();
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
-    static size_t blocked_cpu_sample = 0;
     if (!Tracker::isActive()
         || (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY))
     {
-        if (++blocked_cpu_sample % 10000 == 0) {
-            MY_DEBUG("blocked_cpu_samples: %lld times", blocked_cpu_sample);
-        }
+        DebugInfo::blocked_cpu_sample++;
         return;
     }
-    static size_t processed_cpu_sample = 0;
-    if (++processed_cpu_sample % 10000 == 0) {
-        MY_DEBUG("processed_cpu_samples %llu times >>>", processed_cpu_sample);
-    }
+
+    DebugInfo::processed_cpu_sample++;
     if (d_unwind_native_frames) {
         cpu_trace_single->fill(2);
         cpu_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
@@ -868,20 +859,14 @@ void
 Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
 {
     NativeTrace* mem_trace_single = &NativeTrace::getInstance(0);
-    static size_t blocked_allocation = 0;
     if (RecursionGuard::isActive || !Tracker::isActive()) {
-        if (++blocked_allocation % 100 == 0) {
-            MY_DEBUG("blocked allocation: %lld times", blocked_allocation);
-        }
+        DebugInfo::blocked_allocation++;
         return;
     }
     RecursionGuard guard;
     //stopTrace();
     //PythonStackTracker::get().emitPendingPushesAndPops();
-    static size_t allocation_record_cnt = 0;
-    if (++allocation_record_cnt % 1 == 0) {
-        MY_DEBUG("processed allocation: %lld times", allocation_record_cnt);
-    }
+    DebugInfo::processed_allocation++;
     if (d_unwind_native_frames) {
         bool ret = mem_trace_single->fill(2);
         frame_id_t native_index = 0;
@@ -893,7 +878,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
                         return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
                     });
         }
-        MY_DEBUG("frame tree native index: %lld", native_index);
+        MY_DEBUG("mem - get frame tree native index: %lld", native_index);
         NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
         if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;
@@ -965,7 +950,6 @@ dl_iterate_phdr_callback(struct dl_phdr_info* info, [[maybe_unused]] size_t size
     }
 
     /*
-    MY_DEBUG("segments size: %d", segments.size());
     if (!writer->writeRecordMsg(SegmentHeader{filename, segments.size(), info->dlpi_addr})) {
                 std::cerr << "memray: Failed to write output, deactivating tracking" << std::endl;
                 Tracker::deactivate();
@@ -1292,7 +1276,6 @@ install_trace_function()
 {
     assert(PyGILState_Check());
     RecursionGuard guard;
-    MY_DEBUG("entering install trace function >>>");
     // Don't clear the python stack if we have already registered the tracking
     // function with the current thread. This happens when PyGILState_Ensure is
     // called and a thread state with our hooks installed already exists.

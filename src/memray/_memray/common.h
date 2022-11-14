@@ -25,12 +25,59 @@ namespace memray {
 class DebugInfo
 {
 public:
-    int test;
-    static thread_local size_t total_used_msg_node_num;
+    static thread_local size_t total_used_msg_node;
+    static thread_local size_t total_processed_msg;
 
-    static void printDebugCnt()
+    static thread_local size_t blocked_cpu_sample;
+    static thread_local size_t processed_cpu_sample;
+    static thread_local size_t blocked_allocation;
+    static thread_local size_t processed_allocation;
+
+    static thread_local size_t write_unresolvednativeframe_msg;
+    static thread_local size_t write_frame_push_msg;
+    static thread_local size_t write_frame_pop_msg;
+    static thread_local size_t write_allocation_msg;
+    static thread_local size_t write_native_allocation_msg;
+    static thread_local size_t write_pyrawframe_msg;
+    static thread_local size_t write_memory_record_msg;
+    static thread_local size_t write_segment_header_msg;
+    static thread_local size_t write_segment_msg;
+
+    static thread_local size_t read_unresolvednativeframe_msg;
+
+    static thread_local size_t add_cpu_sample;
+    static thread_local size_t add_allocation;
+
+    static void printWriteDebugCnt()
     {
-        MY_DEBUG("total_used_msg_node_num: %llu", total_used_msg_node_num);
+        MY_DEBUG("write_segment_header_msg: %llu", write_segment_msg);
+        MY_DEBUG("write_segment_msg: %llu", write_segment_msg);
+        MY_DEBUG("total_used_msg_node: %llu", total_used_msg_node);
+        MY_DEBUG("blocked_cpu_sample: %llu", blocked_cpu_sample);
+        MY_DEBUG("processed_cpu_sample: %llu", processed_cpu_sample);
+        MY_DEBUG("blocked_allocation: %llu", blocked_allocation);
+        MY_DEBUG("processed_allocation: %llu", processed_allocation);
+        MY_DEBUG("write_unresolvednativeframe_msg: %llu", write_unresolvednativeframe_msg);
+        MY_DEBUG("write_frame_push_msg: %llu", write_frame_push_msg);
+        MY_DEBUG("write_frame_pop_msg: %llu", write_frame_pop_msg);
+        MY_DEBUG("write_allocation_msg: %llu", write_allocation_msg);
+        MY_DEBUG("write_native_allocation_msg: %llu", write_native_allocation_msg);
+        MY_DEBUG("write_pyrawframe_msg: %llu", write_pyrawframe_msg);
+    }
+
+    static void printMemoryrecordDebugCnt() {
+        MY_DEBUG("write_memory_record_msg: %llu", write_memory_record_msg);
+    }
+
+    static void printProcessDebugCnt() {
+        MY_DEBUG("total_processed_msg: %llu", total_processed_msg);
+    }
+    
+    static void printReadDebugCnt()
+    {
+        MY_DEBUG("read_unresolvednativeframe_msg: %llu", read_unresolvednativeframe_msg);
+        MY_DEBUG("add_cpu_sample: %llu", add_cpu_sample);
+        MY_DEBUG("add_allocation: %llu", add_allocation);
     }
 };
 

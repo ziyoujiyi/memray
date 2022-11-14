@@ -252,7 +252,7 @@ RecordReader::processNativeFrameIndex(const UnresolvedNativeFrame& frame)
         return true;
     }
     std::lock_guard<std::mutex> lock(d_mutex);
-    //MY_DEBUG("processed UnresolvedNativeFrame index: %llu", frame.index);
+    DebugInfo::read_unresolvednativeframe_msg++;
     d_native_frames.emplace_back(frame);
     return true;
 }
@@ -606,7 +606,6 @@ RecordReader::nextRecord()
             case RecordType::NATIVE_TRACE_INDEX: {
                 static size_t cnt = 0;
                 cnt++;
-                //MY_DEBUG("read native_trace_index record: %llu", cnt);
                 UnresolvedNativeFrame record;
                 if (!parseNativeFrameIndex(&record) || !processNativeFrameIndex(record)) {
                     if (d_input->is_open()) LOG(ERROR) << "Failed to process native frame index";
