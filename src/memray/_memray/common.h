@@ -16,12 +16,23 @@ namespace memray {
         printf("FILE: " __FILE__ ", LINE: %d: " format "\n", __LINE__, ##args)  // __VA_ARGS__ -> args
 #else
 // #    define MY_DEBUG(format, ...) printf("FILE: " __FILE__ ", LINE: %d: " format "\n", __LINE__)
- #    define MY_DEBUG(format, ...) 
+#    define MY_DEBUG(format, ...)
 #endif
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+class DebugInfo
+{
+public:
+    int test;
+    static thread_local size_t total_used_msg_node_num;
+
+    static void printDebugCnt()
+    {
+        MY_DEBUG("total_used_msg_node_num: %llu", total_used_msg_node_num);
+    }
+};
 
 struct Timer
 {

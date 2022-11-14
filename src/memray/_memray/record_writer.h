@@ -73,10 +73,7 @@ class RecordWriter
         while (true) {
             Msg* node = d_msg_q->alloc();
             if (node) {
-                static size_t cnt = 0;
-                if (++cnt % 1 == 0) {
-                    MY_DEBUG("total used node num: %llu", cnt);
-                }
+                DebugInfo::total_used_msg_node_num++;
                 return node;
             }
             MY_DEBUG("get one avaiable msg node failed!");

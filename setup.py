@@ -212,6 +212,7 @@ MEMRAY_EXTENSION = Extension(
     name="memray._memray",
     sources=[
         "src/memray/_memray.pyx",
+        "src/memray/_memray/common.cpp",
         "src/memray/_memray/compat.cpp",
         "src/memray/_memray/hooks.cpp",
         "src/memray/_memray/tracking_api.cpp",

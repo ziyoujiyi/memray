@@ -252,7 +252,7 @@ RecordReader::processNativeFrameIndex(const UnresolvedNativeFrame& frame)
         return true;
     }
     std::lock_guard<std::mutex> lock(d_mutex);
-    MY_DEBUG("processed UnresolvedNativeFrame index: %llu", frame.index);
+    //MY_DEBUG("processed UnresolvedNativeFrame index: %llu", frame.index);
     d_native_frames.emplace_back(frame);
     return true;
 }
@@ -342,7 +342,7 @@ RecordReader::processNativeAllocationRecord(const NativeAllocationRecord& record
     d_latest_allocation.allocator = record.allocator;
     if (d_track_stacks) {
         d_latest_allocation.native_frame_id = record.native_frame_id;
-        MY_DEBUG("processed NativeAllocationRecord native_frame_id: %llu", record.native_frame_id);
+        //MY_DEBUG("processed NativeAllocationRecord native_frame_id: %llu", record.native_frame_id);
         auto& stack = d_stack_traces[d_latest_allocation.tid];
         d_latest_allocation.frame_index = stack.empty() ? 0 : stack.back();
         d_latest_allocation.native_segment_generation = d_symbol_resolver.currentSegmentGeneration();
@@ -606,7 +606,7 @@ RecordReader::nextRecord()
             case RecordType::NATIVE_TRACE_INDEX: {
                 static size_t cnt = 0;
                 cnt++;
-                MY_DEBUG("read native_trace_index record: %llu", cnt);
+                //MY_DEBUG("read native_trace_index record: %llu", cnt);
                 UnresolvedNativeFrame record;
                 if (!parseNativeFrameIndex(&record) || !processNativeFrameIndex(record)) {
                     if (d_input->is_open()) LOG(ERROR) << "Failed to process native frame index";
@@ -713,20 +713,20 @@ RecordReader::Py_GetNativeStackFrame(FrameTree::index_t index, size_t generation
     if (list == nullptr) {
         return nullptr;
     }
-    MY_DEBUG("max_stacks: %lld, d_native_frames size: %llu", max_stacks, d_native_frames.size());
+    //MY_DEBUG("max_stacks: %lld, d_native_frames size: %llu", max_stacks, d_native_frames.size());
     while (current_index != 0 && stacks_obtained++ != max_stacks) {
-        MY_DEBUG("current_index: %llu", current_index);
+        //MY_DEBUG("current_index: %llu", current_index);
         auto frame = d_native_frames[current_index - 1];
         current_index = frame.index;
         auto resolved_frames = d_symbol_resolver.resolve(frame.ip, generation);
         if (!resolved_frames) {
             continue;
         }
-        MY_DEBUG("current_index: %d, stacks_obtained: %d, resolved_frames_size: %d", current_index,
-        stacks_obtained, resolved_frames->frames().size());
+        //MY_DEBUG("current_index: %d, stacks_obtained: %d, resolved_frames_size: %d", current_index,
+        //stacks_obtained, resolved_frames->frames().size());
         for (auto& native_frame : resolved_frames->frames()) {
-            MY_DEBUG("native_frame - file: %s, line: %d, symbol: %s", native_frame.File().c_str(),
-            native_frame.Line(), native_frame.Symbol().c_str());
+            //MY_DEBUG("native_frame - file: %s, line: %d, symbol: %s", native_frame.File().c_str(),
+            //native_frame.Line(), native_frame.Symbol().c_str());
             PyObject* pyframe = native_frame.toPythonObject(d_pystring_cache);
             if (pyframe == nullptr) {
                 return nullptr;
