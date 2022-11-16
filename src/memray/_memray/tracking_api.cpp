@@ -780,7 +780,7 @@ Tracker::BackgroundThread::startWriteRecord()
         RecursionGuard::isActive = true;
         Msg* msg_ptr = nullptr;
         while (true) {
-            if (d_stop_writer) {
+            if (unlikely(d_stop_writer)) {
                 break;
             };
             while (true) {
@@ -788,21 +788,18 @@ Tracker::BackgroundThread::startWriteRecord()
                 if (msg_ptr) {
                     break;
                 }
-                if (d_stop_writer) {
+                if (unlikely(d_stop_writer)) {
                     DebugInfo::printProcessDebugCnt();
                     return;
                 }
             }
-            {
-                RecursionGuard guard;
-                Timer t;
-                t.now();
-                bool ret = d_writer->procRecordMsg(msg_ptr);
-                DebugInfo::proc_record_msg_time += t.elapsedNs();
-                if (ret == false) {
-                    continue;
-                }
-            }
+
+            // RecursionGuard guard;
+            //  Timer t;
+            //  t.now();
+            d_writer->procRecordMsg(msg_ptr);  // msg_ptr is ensured not-nullptr in getOneMsg
+            // DebugInfo::proc_record_msg_time += t.elapsedNs();
+
             d_writer->popOneMsg();
         }
         DebugInfo::printProcessDebugCnt();
@@ -890,8 +887,8 @@ void
 Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
-    if (!Tracker::isActive()
-        || (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY))
+    if ((cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY)
+        || !Tracker::isActive())
     {
         DebugInfo::blocked_cpu_sample_dueto_reading++;
         return;
@@ -900,36 +897,27 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
         DebugInfo::blocked_cpu_sample_dueto_trackingmemory++;
         return;
     }
-    // RecursionGuard guard;
-
+    // RecursionGuard guard;    // if use guard here, it will corrupt!!!
     PythonStackTracker& pst = PythonStackTracker::getUnsafe();
     pst.emitPendingPushesAndPopsTmp();
-    Timer t;
-    t.now();
+    // Timer t;
+    // t.now();
     DebugInfo::tracked_cpu_sample++;
-    // if (d_unwind_native_frames) {
     cpu_trace_single->fill();
     cpu_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
     cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::READ_ONLY;
-    //} else {
-    //    CpuSampleRecord record{func};
-    //    if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
-    //        std::cerr << "Failed to write output, deactivating tracking" << std::endl;
-    //        deactivate();
-    //    }
-    //}
-    DebugInfo::cpu_handler_time += t.elapsedNs();
+    // DebugInfo::cpu_handler_time += t.elapsedNs();
 }
 
 void
 Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
 {
     if (RecursionGuard::isActive || !Tracker::isActive()) {
-        DebugInfo::blocked_allocation++;
+        // DebugInfo::blocked_allocation++;
         return;
     }
-    static Timer t;
-    t.now();
+    // Timer t;
+    // t.now();
     RecursionGuard guard;
     PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
@@ -945,7 +933,6 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
                     });
         }
         DebugInfo::tracked_native_allocation++;
-        // MY_DEBUG("mem - get frame tree native index: %lld", native_index);
         NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
         if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;
@@ -959,7 +946,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
             deactivate();
         }
     }
-    DebugInfo::track_memory_time += t.elapsedNs();
+    // DebugInfo::track_memory_time += t.elapsedNs();
 }
 
 void
@@ -969,7 +956,7 @@ Tracker::trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func)
         return;
     }
     RecursionGuard guard;
-    DebugInfo::tracked_deallocation++;
+    // DebugInfo::tracked_deallocation++;
     AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
     if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
         std::cerr << "Failed to write output, deactivating tracking" << std::endl;

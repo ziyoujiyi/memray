@@ -181,8 +181,8 @@ class FrameTree
     size_t getTraceIndex(const T* stack_trace, const tracecallback_t& callback)
     {
         std::lock_guard<std::mutex> lock(d_mutex);
-        Timer t;
-        t.now();
+        // Timer t;
+        // t.now();
         index_t index = 0;
         int64_t backtrace_idx = 0;
         int64_t size = stack_trace->d_sizes_ptr->at(backtrace_idx);
@@ -192,7 +192,7 @@ class FrameTree
             frame_id_t frame = stack_trace->d_data_ptr->at(i);
             index = getTraceIndexUnsafe(index, frame, callback);
         }
-        DebugInfo::build_call_tree_time += t.elapsedNs();
+        // DebugInfo::build_call_tree_time += t.elapsedNs();
         return index;
     }
 
