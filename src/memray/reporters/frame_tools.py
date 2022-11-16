@@ -62,6 +62,7 @@ SYMBOL_BLACKLIST = {
 }
 
 def is_frame_boring(frame: StackFrame) -> bool:  # possibly lead to lack of 'litte' functions
+    return False
     function, file, *_ = frame
     if "frozen" in function or "lto_priv.0" in function or "isra.0" in function or "_PyObject" in function or \
         "_PyFrame" in function or "Py" in function:

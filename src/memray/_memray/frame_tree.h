@@ -123,8 +123,9 @@ class NativeTrace
                                          // https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
         if (likely(size > 0)) {
             (*d_sizes_ptr)[*d_cnt_ptr] = size;
-            d_skip = size > 64 ? (size - 64) : 0;
             //(*d_cnt_ptr)++;
+            // d_skip = size > BACKTRACE_RESERVE ? (size - BACKTRACE_RESERVE) : 0;
+            d_skip = 0;
             DebugInfo::backtrace_time += t.elapsedNs();
             return true;
         } else {
