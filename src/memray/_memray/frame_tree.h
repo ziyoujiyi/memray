@@ -115,7 +115,7 @@ class NativeTrace
   public:
     __attribute__((always_inline)) inline bool fill(size_t skip)
     {
-        static Timer t;
+        Timer t;
         t.now();
         size_t size = unw_backtrace(
                 (void**)d_data_ptr->data(),
@@ -128,6 +128,7 @@ class NativeTrace
             DebugInfo::backtrace_time += t.elapsedNs();
             return true;
         } else {
+            DebugInfo::backtrace_time += t.elapsedNs();
             return false;
         }
     }
@@ -177,7 +178,7 @@ class FrameTree
     size_t getTraceIndex(const T* stack_trace, const tracecallback_t& callback)
     {
         std::lock_guard<std::mutex> lock(d_mutex);
-        static Timer t;
+        Timer t;
         t.now();
         index_t index = 0;
         int64_t backtrace_idx = 0;

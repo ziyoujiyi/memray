@@ -5,7 +5,7 @@ namespace memray {
 std::atomic<bool> PythonStackGuard::isActive = false;
 
 thread_local uint64_t DebugInfo::track_memory_time = 0;
-thread_local uint64_t DebugInfo::track_cpu_time = 0;
+thread_local uint64_t DebugInfo::cpu_handler_time = 0;
 thread_local uint64_t DebugInfo::backtrace_time = 0;
 thread_local uint64_t DebugInfo::build_call_tree_time = 0;
 thread_local uint64_t DebugInfo::dl_open_so_time = 0;

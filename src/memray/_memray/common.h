@@ -79,7 +79,7 @@ class DebugInfo
 {
   public:
     static thread_local uint64_t track_memory_time;  // us
-    static thread_local uint64_t track_cpu_time;
+    static thread_local uint64_t cpu_handler_time;
     static thread_local uint64_t backtrace_time;
     static thread_local uint64_t build_call_tree_time;
     static thread_local uint64_t dl_open_so_time;
@@ -120,7 +120,7 @@ class DebugInfo
     {
         MY_DEBUG("*******************************************************");
         MY_DEBUG("track_memory_time(ms): %llu", track_memory_time / MOD);
-        MY_DEBUG("track_cpu_time(ms): %llu", track_cpu_time / MOD);
+        MY_DEBUG("cpu_handler_time(ms): %llu", cpu_handler_time / MOD);
         MY_DEBUG("backtrace_time(ms): %llu", backtrace_time / MOD);
         MY_DEBUG("build_call_tree_time(ms): %llu", build_call_tree_time / MOD);
         MY_DEBUG("dl_open_so_time(ms): %llu", dl_open_so_time / MOD);
@@ -220,7 +220,7 @@ bool inline copyChar(char* dst, const char* src)
     /*int src_len = strlen(src) + 1;
     int sz = sizeof(dst) / sizeof(dst[0]);
     assert(src_len <= sz);*/
-    strcpy(dst, src);
+    strcpy(dst, src);  // notice: possible overflow!
     return true;
 }
 }  // namespace memray

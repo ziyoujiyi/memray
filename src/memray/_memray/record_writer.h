@@ -440,7 +440,7 @@ template<typename T>
 bool inline RecordWriter::writeRecordMsg(const T& item)  // multi threads write
 {
     std::lock_guard<std::mutex> lock(d_mutex);
-    static Timer t;
+    Timer t;
     t.now();
     Msg* msg = getOneAvaiableMsgNode();
     bool ret = writeRecordMsgUnsafe(msg, item);

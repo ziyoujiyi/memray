@@ -910,7 +910,7 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 
     PythonStackTracker& pst = PythonStackTracker::getUnsafe();
     pst.emitPendingPushesAndPopsTmp();
-    static Timer t;
+    Timer t;
     t.now();
     DebugInfo::tracked_cpu_sample++;
     // if (d_unwind_native_frames) {
@@ -924,7 +924,7 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
     //        deactivate();
     //    }
     //}
-    DebugInfo::track_cpu_time += t.elapsedNs();
+    DebugInfo::cpu_handler_time += t.elapsedNs();
 }
 
 void
@@ -939,7 +939,6 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     t.now();
     RecursionGuard guard;
     PythonStackTracker::get().emitPendingPushesAndPops();
-    // stopTrace();
     if (d_unwind_native_frames) {
         bool ret = mem_trace_single->fill(2);
         frame_id_t native_index = 0;
@@ -967,7 +966,6 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
             deactivate();
         }
     }
-    // startTrace();
     DebugInfo::track_memory_time += t.elapsedNs();
 }
 
