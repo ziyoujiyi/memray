@@ -19,6 +19,7 @@ namespace memray::tracking_api {
 
 #define NATIVE_TRACE_MAX_SIZE 1024
 #define MAX_STROE_BACKTRACE 1
+#define BACKTRACE_RESERVE 64
 using ip_t = frame_id_t;
 
 class BackTraceData

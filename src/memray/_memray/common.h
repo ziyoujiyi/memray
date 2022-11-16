@@ -26,7 +26,6 @@ namespace memray {
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
 #define PER_WRITE_PY_RAW_FRAMES_MAX 128
-#define BACKTRACE_RESERVE 64
 
 struct Timer
 {

@@ -59,6 +59,10 @@ SYMBOL_BLACKLIST = {
     "_compile_bytecode",
     "marshal_loads.lto_priv.0",
     "r_object.lto_priv.0",
+    "_imp_exec_builtin",
+    "Dispatcher_call(Dispatcher*, _object*, _object*)",
+    "compile_and_invoke(Dispatcher*, _object*, _object*, _object*)",
+
 }
 
 def is_frame_boring(frame: StackFrame) -> bool:  # possibly lead to lack of 'litte' functions
