@@ -142,7 +142,6 @@ class Tracker
     // Constructors
     explicit Tracker(
             std::unique_ptr<RecordWriter> record_writer,
-            std::unique_ptr<RecordWriter> other_writer,
             bool native_traces,
             unsigned int memory_interval,
             bool follow_fork,
@@ -158,7 +157,6 @@ class Tracker
     // Interface to get the tracker instance
     static PyObject* createTracker(
             std::unique_ptr<RecordWriter> record_writer,
-            std::unique_ptr<RecordWriter> other_writer,
             bool native_traces,
             unsigned int memory_interval,
             bool follow_fork,
@@ -239,7 +237,6 @@ class Tracker
         // Constructors
         BackgroundThread(
                 std::shared_ptr<RecordWriter> record_writer,
-                std::shared_ptr<RecordWriter> other_writer,
                 unsigned int memory_interval,
                 unsigned int cpu_interval);
 
@@ -256,7 +253,6 @@ class Tracker
       private:
         // Data members
         std::shared_ptr<RecordWriter> d_writer;
-        std::shared_ptr<RecordWriter> d_other_writer;
         bool d_stop{false};
         bool d_stop_writer{false};
         unsigned int d_memory_interval;
@@ -278,7 +274,6 @@ class Tracker
     static std::atomic<Tracker*> d_instance;
 
     std::shared_ptr<RecordWriter> d_writer;
-    std::shared_ptr<RecordWriter> d_other_writer;
     // FrameTree d_native_trace_tree;
     bool d_unwind_native_frames;
     unsigned int d_memory_interval;

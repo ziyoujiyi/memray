@@ -428,7 +428,7 @@ cdef class Tracker:
     cdef object _previous_profile_func
     cdef object _previous_thread_profile_func
     cdef unique_ptr[RecordWriter] _writer
-    cdef unique_ptr[RecordWriter] _native_writer
+    #cdef unique_ptr[RecordWriter] _native_writer
 
     cdef unique_ptr[Sink] _make_writer(self, destination) except*:
         # Creating a Sink can raise Python exceptions (if is interrupted by signal
@@ -463,8 +463,8 @@ cdef class Tracker:
                   bool follow_fork=False, bool trace_python_allocators=False):
         if (file_name, destination).count(None) != 1:
             raise TypeError("Exactly one of 'file_name' or 'destination' argument must be specified")
-        if (native_file_name, native_destination).count(None) != 1:
-            raise TypeError("Exactly one of 'native_file_name' or 'native_destination' argument must be specified")
+        #if (native_file_name, native_destination).count(None) != 1:
+        #    raise TypeError("Exactly one of 'native_file_name' or 'native_destination' argument must be specified")
 
         cdef cppstring command_line = " ".join(sys.argv)
         self._native_traces = native_traces
@@ -475,7 +475,7 @@ cdef class Tracker:
 
         if file_name is not None:
             destination = FileDestination(path=file_name)
-            native_destination = FileDestination(path=native_file_name)
+            #native_destination = FileDestination(path=native_file_name)
 
         if follow_fork and not isinstance(destination, FileDestination):
             raise RuntimeError("follow_fork requires an output file")
@@ -483,9 +483,9 @@ cdef class Tracker:
         self._writer = make_unique[RecordWriter](
                 move(self._make_writer(destination)), command_line, native_traces
             )
-        self._native_writer = make_unique[RecordWriter](
-                move(self._make_writer(native_destination)), command_line, native_traces
-            )
+        #self._native_writer = make_unique[RecordWriter](
+        #        move(self._make_writer(native_destination)), command_line, native_traces
+        #    )
 
     @cython.profile(False)
     def __enter__(self):
@@ -494,11 +494,11 @@ cdef class Tracker:
             raise RuntimeError("No more than one Tracker instance can be active at the same time")
 
         cdef unique_ptr[RecordWriter] writer
-        cdef unique_ptr[RecordWriter] other_writer
-        if self._writer == NULL or self._native_writer == NULL:
+        #cdef unique_ptr[RecordWriter] other_writer
+        if self._writer == NULL:
             raise RuntimeError("Attempting to use stale output handle")
         writer = move(self._writer)
-        other_writer = move(self._native_writer)
+        #other_writer = move(self._native_writer)
 
         self._previous_profile_func = sys.getprofile()
         self._previous_thread_profile_func = threading._profile_hook
@@ -509,7 +509,6 @@ cdef class Tracker:
 
         NativeTracker.createTracker(
             move(writer),
-            move(other_writer),
             self._native_traces,
             self._memory_interval_ms,
             self._follow_fork,

@@ -226,6 +226,8 @@ class RecordWriter
 
     FrameCollection<RawFrame> d_frames;
     FrameTree d_native_trace_tree;
+
+    NativeTrace* cpu_trace_single = nullptr;
 };
 
 template<typename T>
@@ -459,7 +461,6 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
 {
     Timer t;
     t.now();
-    NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
     if (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY) {
         Timer t;
         t.now();

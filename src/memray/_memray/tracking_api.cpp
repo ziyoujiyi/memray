@@ -575,13 +575,11 @@ PythonStackTracker::clear()
 
 Tracker::Tracker(
         std::unique_ptr<RecordWriter> record_writer,
-        std::unique_ptr<RecordWriter> other_writer,
         bool native_traces,
         unsigned int memory_interval,
         bool follow_fork,
         bool trace_python_allocators)
 : d_writer(std::move(record_writer))
-, d_other_writer(std::move(other_writer))
 , d_unwind_native_frames(native_traces)
 , d_memory_interval(memory_interval)
 , d_follow_fork(follow_fork)
@@ -647,8 +645,7 @@ Tracker::Tracker(
         LOG(ERROR) << "set timer failed: " << ret;
     }
     MY_DEBUG("tracker is not actived!");
-    d_background_thread =
-            std::make_unique<BackgroundThread>(d_writer, d_other_writer, memory_interval, cpu_interval);
+    d_background_thread = std::make_unique<BackgroundThread>(d_writer, memory_interval, cpu_interval);
     d_background_thread->start();
     d_background_thread->startWriteRecord();
 
@@ -686,11 +683,9 @@ Tracker::~Tracker()
 
 Tracker::BackgroundThread::BackgroundThread(
         std::shared_ptr<RecordWriter> record_writer,
-        std::shared_ptr<RecordWriter> other_writer,
         unsigned int memory_interval,
         unsigned int cpu_interval)
 : d_writer(std::move(record_writer))
-, d_other_writer(std::move(other_writer))
 , d_memory_interval(memory_interval)
 , d_cpu_interval(cpu_interval)
 {
@@ -861,7 +856,7 @@ Tracker::childFork()
 
     // If we inherited an active tracker, try to clone its record writer.
     std::unique_ptr<RecordWriter> new_writer;
-    std::unique_ptr<RecordWriter> new_native_writer;
+    // std::unique_ptr<RecordWriter> new_native_writer;
     if (old_tracker && old_tracker->isActive() && old_tracker->d_follow_fork) {
         new_writer = old_tracker->d_writer->cloneInChildProcess();
         // new_native_writer = old_tracker->d_other_writer->cloneInChildProcess();
@@ -884,7 +879,6 @@ Tracker::childFork()
     Tracker::deactivate();
     d_instance_owner.reset(new Tracker(
             std::move(new_writer),
-            std::move(new_native_writer),
             old_tracker->d_unwind_native_frames,
             old_tracker->d_memory_interval,
             old_tracker->d_follow_fork,
@@ -957,7 +951,6 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;
             deactivate();
         }
-
     } else {
         DebugInfo::tracked_allocation++;
         AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
@@ -1190,7 +1183,6 @@ Tracker::isActive()
 PyObject*
 Tracker::createTracker(
         std::unique_ptr<RecordWriter> record_writer,
-        std::unique_ptr<RecordWriter> other_writer,
         bool native_traces,
         unsigned int memory_interval,
         bool follow_fork,
@@ -1201,7 +1193,6 @@ Tracker::createTracker(
     // Note: the GIL is used for synchronization of the singleton
     d_instance_owner.reset(new Tracker(
             std::move(record_writer),
-            std::move(other_writer),
             native_traces,
             memory_interval,
             follow_fork,
