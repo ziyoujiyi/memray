@@ -930,7 +930,6 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 void
 Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
 {
-    NativeTrace* mem_trace_single = &NativeTrace::getInstance(0);
     if (RecursionGuard::isActive || !Tracker::isActive()) {
         DebugInfo::blocked_allocation++;
         return;
@@ -940,6 +939,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     RecursionGuard guard;
     PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
+        NativeTrace* mem_trace_single = &NativeTrace::getInstance(0);
         bool ret = mem_trace_single->fill();
         frame_id_t native_index = 0;
         mem_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
