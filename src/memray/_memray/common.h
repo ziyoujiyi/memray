@@ -2,10 +2,12 @@
 #define _MEMRAY_COMMON_H
 
 #include "SPSCQueueOPT.h"
-#include <iostream>
+#include <assert.h>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <ctime>
+#include <iostream>
 #include <sstream>
 #include <string>
 
@@ -23,6 +25,8 @@ namespace memray {
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+#define PER_WRITE_PY_RAW_FRAMES_MAX 128
+
 struct Timer
 {
     // using namespace std::chrono_literals;
@@ -31,10 +35,11 @@ struct Timer
     uint64_t duration;
     Timer()
     {
-        //start = std::chrono::steady_clock::now();
+        // start = std::chrono::steady_clock::now();
     }
 
-    void now() {
+    void now()
+    {
         start = std::chrono::steady_clock::now();
     }
 
@@ -70,10 +75,9 @@ struct Timer
     }
 };
 
-
 class DebugInfo
 {
-public:
+  public:
     static thread_local uint64_t track_memory_time;  // us
     static thread_local uint64_t track_cpu_time;
     static thread_local uint64_t backtrace_time;
@@ -88,11 +92,13 @@ public:
     static thread_local size_t get_avaiable_msg_node_failed;
     static thread_local size_t total_processed_msg;
 
-    static thread_local size_t blocked_cpu_sample;
+    static thread_local size_t blocked_cpu_sample_dueto_reading;
+    static thread_local size_t blocked_cpu_sample_dueto_trackingmemory;
     static thread_local size_t tracked_cpu_sample;
     static thread_local size_t blocked_allocation;
     static thread_local size_t tracked_native_allocation;
     static thread_local size_t tracked_allocation;
+    static thread_local size_t tracked_deallocation;
 
     static thread_local size_t write_unresolvednativeframe_msg;
     static thread_local size_t write_frame_push_msg;
@@ -101,16 +107,17 @@ public:
     static thread_local size_t write_native_allocation_msg;
     static thread_local size_t write_pyrawframe_msg;
     static thread_local size_t write_memory_record_msg;
-    static thread_local size_t write_segment_header_msg;
-    static thread_local size_t write_segment_msg;
+    static thread_local size_t write_segment_header;
+    static thread_local size_t write_segment;
 
     static thread_local size_t read_unresolvednativeframe_msg;
 
     static thread_local size_t add_cpu_sample;
     static thread_local size_t add_allocation;
-    #define MOD 1000000
+#define MOD 1000000
 
-    static void printTimeCost() {
+    static void printTimeCost()
+    {
         MY_DEBUG("*******************************************************");
         MY_DEBUG("track_memory_time(ms): %llu", track_memory_time / MOD);
         MY_DEBUG("track_cpu_time(ms): %llu", track_cpu_time / MOD);
@@ -118,7 +125,9 @@ public:
         MY_DEBUG("build_call_tree_time(ms): %llu", build_call_tree_time / MOD);
         MY_DEBUG("dl_open_so_time(ms): %llu", dl_open_so_time / MOD);
         MY_DEBUG("write_record_msg_time(ms): %llu", write_record_msg_time / MOD);
-        MY_DEBUG("write_threadspecific_record_msg_time(ms): %llu", write_threadspecific_record_msg_time / MOD);
+        MY_DEBUG(
+                "write_threadspecific_record_msg_time(ms): %llu",
+                write_threadspecific_record_msg_time / MOD);
         MY_DEBUG("prepare_tracker_ins_time(ms): %llu", prepare_tracker_ins_time / MOD);
     }
 
@@ -127,13 +136,17 @@ public:
         MY_DEBUG("*******************************************************");
         MY_DEBUG("get_avaiable_msg_node_failed: %llu", get_avaiable_msg_node_failed);
         MY_DEBUG("total_used_msg_node: %llu", total_used_msg_node);
-        MY_DEBUG("write_segment_header_msg: %llu", write_segment_msg);
-        MY_DEBUG("write_segment_msg: %llu", write_segment_msg);
-        MY_DEBUG("blocked_cpu_sample: %llu", blocked_cpu_sample);
+        MY_DEBUG("write_segment_header: %llu", write_segment);
+        MY_DEBUG("write_segment: %llu", write_segment);
+        MY_DEBUG("blocked_cpu_sample_dueto_reading: %llu", blocked_cpu_sample_dueto_reading);
+        MY_DEBUG(
+                "blocked_cpu_sample_dueto_trackingmemory: %llu",
+                blocked_cpu_sample_dueto_trackingmemory);
         MY_DEBUG("tracked_cpu_sample: %llu", tracked_cpu_sample);
         MY_DEBUG("blocked_allocation: %llu", blocked_allocation);
         MY_DEBUG("tracked_native_allocation: %llu", tracked_native_allocation);
         MY_DEBUG("tracked_allocation: %llu", tracked_allocation);
+        MY_DEBUG("tracked_deallocation: %llu", tracked_deallocation);
         MY_DEBUG("write_native_allocation_msg: %llu", write_native_allocation_msg);
         MY_DEBUG("write_allocation_msg: %llu", write_allocation_msg);
         MY_DEBUG("write_unresolvednativeframe_msg: %llu", write_unresolvednativeframe_msg);
@@ -142,17 +155,19 @@ public:
         MY_DEBUG("write_pyrawframe_msg: %llu", write_pyrawframe_msg);
     }
 
-    static void printMemoryrecordDebugCnt() {
+    static void printMemoryrecordDebugCnt()
+    {
         MY_DEBUG("*******************************************************");
         MY_DEBUG("write_memory_record_msg: %llu", write_memory_record_msg);
     }
 
-    static void printProcessDebugCnt() {
+    static void printProcessDebugCnt()
+    {
         MY_DEBUG("*******************************************************");
         MY_DEBUG("total_processed_msg: %llu", total_processed_msg);
         MY_DEBUG("proc_record_msg_time(ms): %llu", proc_record_msg_time / MOD);
     }
-    
+
     static void printReadDebugCnt()
     {
         MY_DEBUG("*******************************************************");
@@ -161,7 +176,6 @@ public:
         MY_DEBUG("add_allocation: %llu", add_allocation);
     }
 };
-
 
 class SpinMutex
 {
@@ -183,7 +197,7 @@ class SpinMutex
     std::atomic_flag flag = ATOMIC_FLAG_INIT;
 };
 
-class UserThreadMutex
+class PythonStackGuard
 {
   public:
     static inline void lock()
@@ -201,5 +215,13 @@ class UserThreadMutex
     static std::atomic<bool> isActive;
 };
 
+bool inline copyChar(char* dst, const char* src)
+{
+    /*int src_len = strlen(src) + 1;
+    int sz = sizeof(dst) / sizeof(dst[0]);
+    assert(src_len <= sz);*/
+    strcpy(dst, src);
+    return true;
+}
 }  // namespace memray
 #endif  //_MEMRAY_COMMON_H

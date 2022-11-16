@@ -220,7 +220,12 @@ class Tracker
 
     // RawFrame stack interface
     bool pushFrame(const RawFrame& frame);
+    frame_id_t registerFrame(const RawFrame& frame);
+    bool pushFrameTmp(const RawFrame& frame);
+    frame_id_t registerFrameTmp(const RawFrame& frame);
+
     bool popFrames(uint32_t count);
+    bool popFramesTmp(uint32_t count);
 
     // Interface to activate/deactivate the tracking
     static const std::atomic<bool>& isActive();
@@ -267,7 +272,7 @@ class Tracker
     };
 
     // Data members
-    FrameCollection<RawFrame> d_frames;
+    // FrameCollection<RawFrame> d_frames;
     static std::atomic<bool> d_active;
     static std::unique_ptr<Tracker> d_instance_owner;
     static std::atomic<Tracker*> d_instance;
@@ -283,8 +288,6 @@ class Tracker
     std::unique_ptr<BackgroundThread> d_background_thread;
 
     // Methods
-    frame_id_t registerFrame(const RawFrame& frame);
-
     void trackCpuImpl(hooks::Allocator func);
     void trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func);
     void trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func);

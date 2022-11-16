@@ -107,6 +107,7 @@ class PythonStackTracker
 
     static PythonStackTracker& get();
     void emitPendingPushesAndPops();
+    void emitPendingPushesAndPopsTmp();
     void invalidateMostRecentFrameLineNumber();
     int pushPythonFrame(PyFrameObject* frame);
     void popPythonFrame();
@@ -114,10 +115,11 @@ class PythonStackTracker
     void installGreenletTraceFunctionIfNeeded();
     void handleGreenletSwitch(PyObject* from, PyObject* to);
 
-  private:
+  public:
     // Fetch the thread-local stack tracker without checking if its stack needs to be reloaded.
     static PythonStackTracker& getUnsafe();
 
+  private:
     static std::vector<LazilyEmittedFrame> pythonFrameToStack(PyFrameObject* current_frame);
     static void recordAllStacks();
     void reloadStackIfTrackerChanged();
@@ -162,7 +164,9 @@ PythonStackTracker::getUnsafe()
 void
 PythonStackTracker::emitPendingPushesAndPops()
 {
+    PythonStackGuard::lock();
     if (!d_stack) {
+        PythonStackGuard::unlock();
         return;
     }
 
@@ -207,11 +211,63 @@ PythonStackTracker::emitPendingPushesAndPops()
     }
 
     invalidateMostRecentFrameLineNumber();
+    PythonStackGuard::unlock();
+}
+
+void
+PythonStackTracker::emitPendingPushesAndPopsTmp()
+{
+    if (!d_stack) {
+        return;
+    }
+
+    // At any time, the stack contains (in this order):
+    // - Any number of EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED frames
+    // - 0 or 1 EMITTED_BUT_LINE_NUMBER_MAY_HAVE_CHANGED frame
+    // - Any number of NOT_EMITTED frames
+    // MY_DEBUG("entering emitPendingPushesAndPops >>>");
+    auto it = d_stack->rbegin();
+    for (; it != d_stack->rend(); ++it) {
+        if (it->state == FrameState::NOT_EMITTED) {
+            it->raw_frame_record.lineno = PyFrame_GetLineNumber(it->frame);
+        } else if (it->state == FrameState::EMITTED_BUT_LINE_NUMBER_MAY_HAVE_CHANGED) {
+            int lineno = PyFrame_GetLineNumber(it->frame);
+            if (lineno != it->raw_frame_record.lineno) {
+                // Line number was wrong; emit an artificial pop so we can push
+                // back in with the right line number.
+                d_num_pending_pops++;
+                it->state = FrameState::NOT_EMITTED;
+                it->raw_frame_record.lineno = lineno;
+            } else {
+                it->state = FrameState::EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED;
+                break;
+            }
+        } else {
+            assert(it->state == FrameState::EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED);
+            break;
+        }
+    }
+    auto first_to_emit = it.base();
+    size_t sz = d_stack->size();
+    // Emit pending pops
+    Tracker::getTracker()->popFramesTmp(d_num_pending_pops);
+    d_num_pending_pops = 0;
+
+    // Emit pending pushes
+    for (auto to_emit = first_to_emit; to_emit != d_stack->end(); ++to_emit) {
+        if (!Tracker::getTracker()->pushFrameTmp(to_emit->raw_frame_record)) {
+            break;
+        }
+        to_emit->state = FrameState::EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED;
+    }
+
+    invalidateMostRecentFrameLineNumber();
 }
 
 void
 PythonStackTracker::invalidateMostRecentFrameLineNumber()
 {
+    PythonStackGuard::lock();
     // As bytecode instructions are executed, the line number in the most
     // recent Python frame can change without us finding out. Cache its line
     // number, but verify it the next time this frame might need to be emitted.
@@ -219,6 +275,7 @@ PythonStackTracker::invalidateMostRecentFrameLineNumber()
         && d_stack->back().state == FrameState::EMITTED_AND_LINE_NUMBER_HAS_NOT_CHANGED) {
         d_stack->back().state = FrameState::EMITTED_BUT_LINE_NUMBER_MAY_HAVE_CHANGED;
     }
+    PythonStackGuard::unlock();
 }
 
 void
@@ -228,12 +285,11 @@ PythonStackTracker::reloadStackIfTrackerChanged()
     if (d_tracker_generation == s_tracker_generation) {
         return;
     }
-
+    MY_DEBUG("how many times will execute here?");  // only once!!
     // If we reach this point, a new Tracker was installed by another thread,
     // which also captured our Python stack. Trust it, ignoring any stack we
     // already hold (since the stack we hold could be incorrect if tracking
     // stopped and later restarted underneath our still-running thread).
-
     if (d_stack) {
         d_stack->clear();
     }
@@ -256,7 +312,6 @@ PythonStackTracker::reloadStackIfTrackerChanged()
     for (auto frame_it = correct_stack.rbegin(); frame_it != correct_stack.rend(); ++frame_it) {
         pushLazilyEmittedFrame(*frame_it);
     }
-    // emitPendingPushesAndPops();  // not work ????
 }
 
 int
@@ -264,7 +319,6 @@ PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
 {
     // MY_DEBUG("entering pushPythonFrame >>> ");
     installGreenletTraceFunctionIfNeeded();
-
     PyCodeObject* code = compat::frameGetCode(frame);
     const char* function = PyUnicode_AsUTF8(code->co_name);
     if (function == nullptr) {
@@ -280,37 +334,41 @@ PythonStackTracker::pushPythonFrame(PyFrameObject* frame)
     // It doesn't matter to the reader, and is more efficient.
     bool is_entry_frame = !s_native_tracking_enabled || compat::isEntryFrame(frame);
     pushLazilyEmittedFrame({frame, {function, filename, 0, is_entry_frame}, FrameState::NOT_EMITTED});
-    emitPendingPushesAndPops();
     return 0;
 }
 
 void
 PythonStackTracker::pushLazilyEmittedFrame(const LazilyEmittedFrame& frame)
 {
+    PythonStackGuard::lock();
     // Note: this function does not require the GIL.
     if (!d_stack) {
         d_stack = new std::vector<LazilyEmittedFrame>;
         d_stack->reserve(1024);
     }
     d_stack->push_back(frame);
+    PythonStackGuard::unlock();
 }
 
 void
 PythonStackTracker::popPythonFrame()
 {
+    PythonStackGuard::lock();
+
     installGreenletTraceFunctionIfNeeded();
 
     if (!d_stack || d_stack->empty()) {
+        PythonStackGuard::unlock();
+
         return;
     }
-
     if (d_stack->back().state != FrameState::NOT_EMITTED) {
         d_num_pending_pops += 1;
         assert(d_num_pending_pops != 0);  // Ensure we didn't overflow.
     }
     d_stack->pop_back();
     invalidateMostRecentFrameLineNumber();
-    emitPendingPushesAndPops();
+    PythonStackGuard::unlock();
 }
 
 void
@@ -555,6 +613,7 @@ Tracker::Tracker(
 
     PythonStackTracker::s_native_tracking_enabled = native_traces;
     PythonStackTracker::installProfileHooks();
+    PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_trace_python_allocators) {
         registerPymallocHooks();
     }
@@ -836,14 +895,21 @@ Tracker::childFork()
 void
 Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
 {
-    stopTrace();
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
     if (!Tracker::isActive()
         || (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY))
     {
-        DebugInfo::blocked_cpu_sample++;
+        DebugInfo::blocked_cpu_sample_dueto_reading++;
         return;
     }
+    if (PythonStackGuard::isLocked()) {
+        DebugInfo::blocked_cpu_sample_dueto_trackingmemory++;
+        return;
+    }
+    // RecursionGuard guard;
+
+    PythonStackTracker& pst = PythonStackTracker::getUnsafe();
+    pst.emitPendingPushesAndPopsTmp();
     static Timer t;
     t.now();
     DebugInfo::tracked_cpu_sample++;
@@ -858,7 +924,6 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
     //        deactivate();
     //    }
     //}
-    startTrace();
     DebugInfo::track_cpu_time += t.elapsedNs();
 }
 
@@ -873,37 +938,36 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     static Timer t;
     t.now();
     RecursionGuard guard;
-    //stopTrace();
-    /*
-        if (d_unwind_native_frames) {
-            bool ret = mem_trace_single->fill(2);
-            frame_id_t native_index = 0;
-            mem_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
-            if (ret) {
-                native_index = d_writer->d_native_trace_tree.getTraceIndex(
-                        mem_trace_single,
-                        [&](frame_id_t ip, uint32_t index) {
-                            return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip,
-       index});
-                        });
-            }
-            DebugInfo::tracked_native_allocation++;
-            // MY_DEBUG("mem - get frame tree native index: %lld", native_index);
-            NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
-            if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
-                std::cerr << "Failed to write output, deactivating tracking" << std::endl;
-                deactivate();
-            }
-    */
-    //} else {
-    DebugInfo::tracked_allocation++;
-    AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
-    if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
-        std::cerr << "Failed to write output, deactivating tracking" << std::endl;
-        deactivate();
+    PythonStackTracker::get().emitPendingPushesAndPops();
+    // stopTrace();
+    if (d_unwind_native_frames) {
+        bool ret = mem_trace_single->fill(2);
+        frame_id_t native_index = 0;
+        mem_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
+        if (ret) {
+            native_index = d_writer->d_native_trace_tree.getTraceIndex(
+                    mem_trace_single,
+                    [&](frame_id_t ip, uint32_t index) {
+                        return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
+                    });
+        }
+        DebugInfo::tracked_native_allocation++;
+        // MY_DEBUG("mem - get frame tree native index: %lld", native_index);
+        NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
+        if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
+            std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+            deactivate();
+        }
+
+    } else {
+        DebugInfo::tracked_allocation++;
+        AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
+        if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
+            std::cerr << "Failed to write output, deactivating tracking" << std::endl;
+            deactivate();
+        }
     }
-    //}
-    //startTrace();
+    // startTrace();
     DebugInfo::track_memory_time += t.elapsedNs();
 }
 
@@ -915,6 +979,7 @@ Tracker::trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func)
     }
     RecursionGuard guard;
     // stopTrace();
+    DebugInfo::tracked_deallocation++;
     AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
     if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
         std::cerr << "Failed to write output, deactivating tracking" << std::endl;
@@ -1031,7 +1096,7 @@ Tracker::registerThreadNameImpl(const char* name)
 frame_id_t
 Tracker::registerFrame(const RawFrame& frame)
 {
-    const auto [frame_id, is_new_frame] = d_frames.getIndex(frame);
+    const auto [frame_id, is_new_frame] = d_writer->d_frames.getIndex(frame);
     if (is_new_frame) {
         pyrawframe_map_val_t frame_index{frame_id, frame};
         /*
@@ -1065,8 +1130,15 @@ Tracker::popFrames(uint32_t count)
         count -= to_pop;
 
         to_pop -= 1;  // i.e. 0 means pop 1 frame, 15 means pop 16 frames
-        d_writer->writeRecordMsg(FramePop{to_pop});
+        d_writer->writeThreadSpecificRecordMsg(thread_id(), FramePop{to_pop});
     }
+    return true;
+}
+
+bool
+Tracker::popFramesTmp(uint32_t count)
+{
+    d_writer->pop_frames_cnt = count;
     return true;
 }
 
@@ -1087,6 +1159,15 @@ Tracker::pushFrame(const RawFrame& frame)
         deactivate();
         return false;
     }
+    return true;
+}
+
+bool
+Tracker::pushFrameTmp(const RawFrame& frame)
+{
+    assert(d_writer->raw_frames_cnt < PER_WRITE_PY_RAW_FRAMES_MAX);
+    d_writer->raw_frames[d_writer->raw_frames_cnt] = std::move(frame);
+    d_writer->raw_frames_cnt++;
     return true;
 }
 
@@ -1129,10 +1210,10 @@ Tracker::createTracker(
             memory_interval,
             follow_fork,
             trace_python_allocators));
-    PythonStackTracker::get().emitPendingPushesAndPops();
+    // PythonStackTracker::get().emitPendingPushesAndPops();
     MY_DEBUG("Tracker ins created && is activated");
     DebugInfo::prepare_tracker_ins_time += t.elapsedNs();
-    /*
+
     void* ptr = hooks::malloc(99999999);  // use SysMalloc
     void* ptr2 = malloc(8888888);  // use selfdefine malloc
     void* ptr3 = intercept::malloc(6666666);  // use selfdefine malloc
@@ -1144,7 +1225,7 @@ Tracker::createTracker(
     } else {
         MY_DEBUG("test native malloc failed");
     }
-    */
+
     Py_RETURN_NONE;
 }
 

@@ -192,13 +192,32 @@ struct Segment
     uintptr_t memsz;
 };
 
+struct RawFrameInfo
+{
+    frame_id_t frame_id;
+    // std::vector<char> function_name = decltype(function_name)(256);
+    // std::vector<char> filename = decltype(filename)(256);
+    char function_name[256];
+    char filename[256];
+    int lineno;
+    bool is_entry_frame;
+};
+
 struct RawFrame
 {
     const char* function_name;
     const char* filename;
     int lineno;
     bool is_entry_frame;
-
+    /*
+        RawFrame(const RawFrame& other)
+        {
+            this->is_entry_frame = other.is_entry_frame;
+            this->lineno = other.lineno;
+            copyChar(this->filename, other.filename);
+            copyChar(this->function_name, other.function_name);
+        }
+    */
     auto operator==(const RawFrame& other) const -> bool
     {
         return (function_name == other.function_name && filename == other.filename
@@ -310,7 +329,7 @@ class FrameCollection
         return std::make_pair(it->second, false);
     }
 
-  private:
+  public:
     frame_id_t d_current_frame_id{};
     std::unordered_map<FrameType, frame_id_t, typename FrameType::Hash> d_frame_map{};
 };

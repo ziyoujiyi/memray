@@ -56,6 +56,7 @@ RecordWriter::RecordWriter(
             getPythonAllocator()};
     strncpy(d_header.magic, MAGIC, sizeof(d_header.magic));
     d_msg_q = std::make_shared<MsgQ>();
+    raw_frames.reserve(PER_WRITE_PY_RAW_FRAMES_MAX);
 }
 
 bool

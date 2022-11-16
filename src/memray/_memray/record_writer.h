@@ -18,18 +18,10 @@ namespace memray::tracking_api {
 
 struct SegmentHeaderInfo
 {
-    std::vector<char> filename = decltype(filename)(256);
+    // std::vector<char> filename = decltype(filename)(256);
+    char filename[256];
     size_t num_segments;
     uintptr_t addr;
-};
-
-struct RawFrameInfo
-{
-    frame_id_t frame_id;
-    std::vector<char> function_name = decltype(function_name)(256);
-    std::vector<char> filename = decltype(filename)(256);
-    int lineno;
-    bool is_entry_frame;
 };
 
 struct Msg
@@ -49,7 +41,8 @@ struct Msg
     CpuSampleRecord d_cpu_sample;
     NativeCpuSampleRecord d_native_cpu_sample;
     ContextSwitch d_cs;
-    std::vector<char> d_thread_name = decltype(d_thread_name)(64);
+    // std::vector<char> d_thread_name = decltype(d_thread_name)(64);
+    char d_thread_name[64];
     SegmentHeaderInfo d_sgh;
     Segment d_sg;
 };
@@ -97,16 +90,6 @@ class RecordWriter
     void inline popOneMsg()
     {
         d_msg_q->pop();
-    }
-
-    bool inline copyChar(std::vector<char>& dst, const char* src)
-    {
-        int src_len = strlen(src) + 1;
-        if (dst.size() < src_len) {
-            dst.resize(src_len);
-        }
-        strcpy(dst.data(), src);
-        return true;
     }
 
     template<typename T>
@@ -189,7 +172,7 @@ class RecordWriter
             const NativeAllocationRecord& record);
 
     bool inline writeRecordUnsafe(const pyrawframe_map_val_t& item);
-    bool inline writeRecordMsgUnsafe(Msg* msg, const pyrawframe_map_val_t& item);
+    bool inline writeRecordMsgUnsafe(Msg* msg, const pyrawframe_map_val_t& item);  // for memory
     bool inline procFrameIndexMsg(
             const RecordTypeAndFlags& token,
             const DeltaEncodedFields& last,
@@ -237,6 +220,11 @@ class RecordWriter
     DeltaEncodedFields d_last;
 
   public:
+    size_t pop_frames_cnt{0};
+    std::vector<RawFrame> raw_frames;
+    size_t raw_frames_cnt{0};
+
+    FrameCollection<RawFrame> d_frames;
     FrameTree d_native_trace_tree;
 };
 
@@ -360,7 +348,7 @@ bool inline RecordWriter::procRecordMsg(const Msg* msg)
             procContextSwitchMsg(msg->token, msg->d_cs);
         } break;
         case RecordType::THREAD_RECORD: {
-            procThreadRecordMsg(msg->token, msg->d_thread_name.data());
+            procThreadRecordMsg(msg->token, msg->d_thread_name);
         } break;
         default:
             break;
@@ -470,12 +458,36 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
     t.now();
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
     if (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY) {
+        while (pop_frames_cnt) {
+            uint8_t to_pop = (pop_frames_cnt > 16 ? 16 : pop_frames_cnt);
+            pop_frames_cnt -= to_pop;
+            to_pop -= 1;  // i.e. 0 means pop 1 frame, 15 means pop 16 frames
+            writeMsgWithContext(
+                    d_last.thread_id,
+                    cpu_trace_single->backtrace_thread_id,
+                    FramePop{to_pop});
+        }
+
+        for (int32_t i = 0; i < raw_frames_cnt; i++) {
+            const auto [frame_id, is_new_frame] = d_frames.getIndex(raw_frames[i]);
+            if (is_new_frame) {
+                const pyrawframe_map_val_t& frame_index{frame_id, raw_frames[i]};
+                writeRecordMsg(frame_index);
+            }
+            writeMsgWithContext(
+                    d_last.thread_id,
+                    cpu_trace_single->backtrace_thread_id,
+                    FramePush{frame_id});
+        }
+        raw_frames_cnt = 0;
+        pop_frames_cnt = 0;
+
         frame_id_t native_index = 0;
         native_index =
                 d_native_trace_tree.getTraceIndex(cpu_trace_single, [&](frame_id_t ip, uint32_t index) {
                     return writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
                 });
-        //MY_DEBUG("cpu - get frame tree native index: %lld", native_index);
+        // MY_DEBUG("cpu - get frame tree native index: %lld", native_index);
         NativeCpuSampleRecord record{hooks::Allocator::CPU_SAMPLING, native_index};
         bool ret = writeMsgWithContext(d_last.thread_id, cpu_trace_single->backtrace_thread_id, record);
         cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
@@ -625,7 +637,7 @@ bool inline RecordWriter::procContextSwitchMsg(
 
 bool inline RecordWriter::writeRecordUnsafe(const Segment& record)
 {
-    DebugInfo::write_segment_msg++;
+    DebugInfo::write_segment++;
 
     RecordTypeAndFlags token{RecordType::SEGMENT, 0};
     return writeSimpleType(token) && writeSimpleType(record.vaddr) && writeVarint(record.memsz);
@@ -783,7 +795,8 @@ bool inline RecordWriter::writeRecordUnsafe(const pyrawframe_map_val_t& item)
            && writeIntegralDelta(&d_last.python_line_number, item.second.lineno);
 }
 
-bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const pyrawframe_map_val_t& item) // RawFrame
+bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg,
+                                               const pyrawframe_map_val_t& item)  // RawFrame
 {
     DebugInfo::write_pyrawframe_msg++;
 
@@ -818,14 +831,14 @@ bool inline RecordWriter::procFrameIndexMsg(
         const RawFrameInfo& record)
 {
     bool ret = writeSimpleType(token) && writeIntegralDelta2(last.python_frame_id, record.frame_id)
-               && writeString(record.function_name.data()) && writeString(record.filename.data())
+               && writeString(record.function_name) && writeString(record.filename)
                && writeIntegralDelta2(last.python_line_number, record.lineno);
     return ret;
 }
 
 bool inline RecordWriter::writeRecordUnsafe(const SegmentHeader& item)
 {
-    DebugInfo::write_segment_header_msg++;
+    DebugInfo::write_segment_header++;
 
     RecordTypeAndFlags token{RecordType::SEGMENT_HEADER, 0};
     return writeSimpleType(token) && writeString(item.filename) && writeVarint(item.num_segments)
@@ -846,8 +859,8 @@ bool inline RecordWriter::procSegmentHeaderMsg(
         const RecordTypeAndFlags& token,
         const SegmentHeaderInfo& sgh)
 {
-    bool ret = writeSimpleType(token) && writeString(sgh.filename.data())
-               && writeVarint(sgh.num_segments) && writeSimpleType(sgh.addr);
+    bool ret = writeSimpleType(token) && writeString(sgh.filename) && writeVarint(sgh.num_segments)
+               && writeSimpleType(sgh.addr);
     return ret;
 }
 
