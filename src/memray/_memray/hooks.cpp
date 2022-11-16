@@ -93,8 +93,6 @@ isDeallocator(const Allocator& allocator)
 MEMRAY_HOOKED_FUNCTIONS
 #undef FOR_EACH_HOOKED_FUNCTION
 
-bool MEMORY_TRACE_SWITCH = true;
-
 void
 ensureAllHooksAreValid()
 {
@@ -110,7 +108,6 @@ namespace memray::intercept {
 void*
 pymalloc_malloc(void* ctx, size_t size) noexcept
 {
-    
     PyMemAllocatorEx* alloc = (PyMemAllocatorEx*)ctx;
     void* ptr = nullptr;
     {
@@ -169,15 +166,12 @@ pymalloc_free(void* ctx, void* ptr) noexcept
 }
 
 void*
-malloc(size_t size) noexcept   
+malloc(size_t size) noexcept
 {
     assert(hooks::malloc);
 
     void* ptr = hooks::malloc(size);
 
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ptr;
-    }
     tracking_api::Tracker::trackAllocation(ptr, size, hooks::Allocator::MALLOC);
     return ptr;
 }
@@ -189,10 +183,8 @@ free(void* ptr) noexcept
 
     // We need to call our API before we call the real free implementation
     // to make sure that the pointer is not reused in-between.
-    if (likely(hooks::MEMORY_TRACE_SWITCH == true)) {
-        if (ptr != nullptr) {
-            tracking_api::Tracker::trackDeallocation(ptr, 0, hooks::Allocator::FREE);
-        }
+    if (ptr != nullptr) {
+        tracking_api::Tracker::trackDeallocation(ptr, 0, hooks::Allocator::FREE);
     }
     hooks::free(ptr);
 }
@@ -202,9 +194,6 @@ realloc(void* ptr, size_t size) noexcept
 {
     assert(hooks::realloc);
     void* ret = hooks::realloc(ptr, size);
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
-    }
     if (ret) {
         if (ptr != nullptr) {
             tracking_api::Tracker::trackDeallocation(ptr, 0, hooks::Allocator::FREE);
@@ -219,9 +208,6 @@ calloc(size_t num, size_t size) noexcept
 {
     assert(hooks::calloc);
     void* ret = hooks::calloc(num, size);
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
-    }
     if (ret) {
         tracking_api::Tracker::trackAllocation(ret, num * size, hooks::Allocator::CALLOC);
     }
@@ -233,9 +219,6 @@ mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) noexc
 {
     assert(hooks::mmap);
     void* ptr = hooks::mmap(addr, length, prot, flags, fd, offset);
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ptr;
-    }
     tracking_api::Tracker::trackAllocation(ptr, length, hooks::Allocator::MMAP);
     return ptr;
 }
@@ -246,9 +229,6 @@ mmap64(void* addr, size_t length, int prot, int flags, int fd, off64_t offset) n
 {
     assert(hooks::mmap64);
     void* ptr = hooks::mmap64(addr, length, prot, flags, fd, offset);
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ptr;
-    }
     tracking_api::Tracker::trackAllocation(ptr, length, hooks::Allocator::MMAP);
     return ptr;
 }
@@ -258,11 +238,8 @@ int
 munmap(void* addr, size_t length) noexcept
 {
     assert(hooks::munmap);
-    if (likely(hooks::MEMORY_TRACE_SWITCH == true)) {
-        tracking_api::Tracker::trackDeallocation(addr, length, hooks::Allocator::MUNMAP);
-    }
-    int ret = hooks::munmap(addr, length);
-    return ret;
+    tracking_api::Tracker::trackDeallocation(addr, length, hooks::Allocator::MUNMAP);
+    return hooks::munmap(addr, length);
 }
 
 void*
@@ -275,9 +252,6 @@ valloc(size_t size) noexcept
         tracking_api::RecursionGuard guard;
         ret = hooks::valloc(size);
     }
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
-    }
     if (ret) {
         tracking_api::Tracker::trackAllocation(ret, size, hooks::Allocator::VALLOC);
     }
@@ -289,9 +263,6 @@ posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
 {
     assert(hooks::posix_memalign);
     int ret = hooks::posix_memalign(memptr, alignment, size);
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
-    }
     if (!ret) {
         tracking_api::Tracker::trackAllocation(*memptr, size, hooks::Allocator::POSIX_MEMALIGN);
     }
@@ -329,9 +300,6 @@ aligned_alloc(size_t alignment, size_t size) noexcept
 {
     assert(hooks::aligned_alloc);
     void* ret = hooks::aligned_alloc(alignment, size);
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
-    }
     if (ret) {
         tracking_api::Tracker::trackAllocation(ret, size, hooks::Allocator::ALIGNED_ALLOC);
     }
@@ -350,9 +318,6 @@ memalign(size_t alignment, size_t size) noexcept
         tracking_api::RecursionGuard guard;
         ret = hooks::memalign(alignment, size);
     }
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
-    }
     if (ret) {
         tracking_api::Tracker::trackAllocation(ret, size, hooks::Allocator::MEMALIGN);
     }
@@ -365,9 +330,6 @@ pvalloc(size_t size) noexcept
 {
     assert(hooks::pvalloc);
     void* ret = hooks::pvalloc(size);
-    if (unlikely(hooks::MEMORY_TRACE_SWITCH == false)) {
-        return ret;
-    }
     if (ret) {
         tracking_api::Tracker::trackAllocation(ret, size, hooks::Allocator::PVALLOC);
     }

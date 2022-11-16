@@ -113,7 +113,7 @@ class NativeTrace
     thread_id_t backtrace_thread_id = 0;
 
   public:
-    __attribute__((always_inline)) inline bool fill(size_t skip)
+    __attribute__((always_inline)) inline bool fill()
     {
         Timer t;
         t.now();

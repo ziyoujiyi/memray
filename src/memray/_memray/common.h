@@ -78,7 +78,8 @@ struct Timer
 class DebugInfo
 {
   public:
-    static thread_local uint64_t track_memory_time;  // us
+    static thread_local uint64_t track_memory_time;  // ns
+    static thread_local uint64_t track_cpu_time;  // ns
     static thread_local uint64_t cpu_handler_time;
     static thread_local uint64_t backtrace_time;
     static thread_local uint64_t build_call_tree_time;
@@ -101,6 +102,7 @@ class DebugInfo
     static thread_local size_t tracked_deallocation;
 
     static thread_local size_t write_unresolvednativeframe_msg;
+    static thread_local size_t write_msg_with_context_time;
     static thread_local size_t write_frame_push_msg;
     static thread_local size_t write_frame_pop_msg;
     static thread_local size_t write_allocation_msg;
@@ -120,6 +122,7 @@ class DebugInfo
     {
         MY_DEBUG("*******************************************************");
         MY_DEBUG("track_memory_time(ms): %llu", track_memory_time / MOD);
+        MY_DEBUG("track_cpu_time(ms): %llu", track_cpu_time / MOD);
         MY_DEBUG("cpu_handler_time(ms): %llu", cpu_handler_time / MOD);
         MY_DEBUG("backtrace_time(ms): %llu", backtrace_time / MOD);
         MY_DEBUG("build_call_tree_time(ms): %llu", build_call_tree_time / MOD);
@@ -129,6 +132,7 @@ class DebugInfo
                 "write_threadspecific_record_msg_time(ms): %llu",
                 write_threadspecific_record_msg_time / MOD);
         MY_DEBUG("prepare_tracker_ins_time(ms): %llu", prepare_tracker_ins_time / MOD);
+        MY_DEBUG("write_msg_with_context_time(ms): %llu", write_msg_with_context_time / MOD);
     }
 
     static void printWriteDebugCnt()

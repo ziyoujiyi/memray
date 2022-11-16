@@ -62,7 +62,6 @@ int
 phdr_symfind_callback(dl_phdr_info* info, [[maybe_unused]] size_t size, void* data) noexcept;
 #endif
 
-extern bool MEMORY_TRACE_SWITCH;
 _Pragma("GCC diagnostic ignored \"-Wignored-attributes\"") template<typename Signature>
 struct SymbolHook
 {

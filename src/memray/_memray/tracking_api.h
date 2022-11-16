@@ -291,14 +291,7 @@ class Tracker
     void trackCpuImpl(hooks::Allocator func);
     void trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func);
     void trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func);
-    static inline void startTrace()
-    {
-        hooks::MEMORY_TRACE_SWITCH = true;
-    }
-    static inline void stopTrace()
-    {
-        hooks::MEMORY_TRACE_SWITCH = false;
-    }
+
     void invalidate_module_cache_impl();
     void updateModuleCacheImpl();
     void registerThreadNameImpl(const char* name);

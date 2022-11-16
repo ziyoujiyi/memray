@@ -914,7 +914,7 @@ Tracker::trackCpuImpl(hooks::Allocator func)  // func is just CPU_SAMPLING
     t.now();
     DebugInfo::tracked_cpu_sample++;
     // if (d_unwind_native_frames) {
-    cpu_trace_single->fill(2);
+    cpu_trace_single->fill();
     cpu_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
     cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::READ_ONLY;
     //} else {
@@ -940,7 +940,7 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
     RecursionGuard guard;
     PythonStackTracker::get().emitPendingPushesAndPops();
     if (d_unwind_native_frames) {
-        bool ret = mem_trace_single->fill(2);
+        bool ret = mem_trace_single->fill();
         frame_id_t native_index = 0;
         mem_trace_single->backtrace_thread_id = d_writer->d_last.thread_id;
         if (ret) {
@@ -976,14 +976,12 @@ Tracker::trackDeallocationImpl(void* ptr, size_t size, hooks::Allocator func)
         return;
     }
     RecursionGuard guard;
-    // stopTrace();
     DebugInfo::tracked_deallocation++;
     AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
     if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
         std::cerr << "Failed to write output, deactivating tracking" << std::endl;
         deactivate();
     }
-    // startTrace();
 }
 
 void

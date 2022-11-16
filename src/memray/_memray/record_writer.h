@@ -415,6 +415,8 @@ template<typename T>
 bool inline RecordWriter::writeMsgWithContext(thread_id_t& last_tid, thread_id_t tid, const T& item)
 {
     std::lock_guard<std::mutex> lock(d_mutex);
+    Timer t;
+    t.now();
     if (last_tid != tid) {
         last_tid = tid;
         Msg* msg = getOneAvaiableMsgNode();
@@ -424,6 +426,7 @@ bool inline RecordWriter::writeMsgWithContext(thread_id_t& last_tid, thread_id_t
     Msg* msg = getOneAvaiableMsgNode();
     bool ret = writeRecordMsgUnsafe(msg, item);
     pushMsgNode();
+    DebugInfo::write_msg_with_context_time += t.elapsedNs();
     return ret;
 }
 
@@ -437,7 +440,7 @@ bool inline RecordWriter::writeUnresolvedNativeFrameMsg(const UnresolvedNativeFr
 }
 
 template<typename T>
-bool inline RecordWriter::writeRecordMsg(const T& item)  // multi threads write
+bool inline RecordWriter::writeRecordMsg(const T& item)  // for FRAME_ID & MEMORY_RECORD
 {
     std::lock_guard<std::mutex> lock(d_mutex);
     Timer t;
@@ -458,6 +461,8 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
     t.now();
     NativeTrace* cpu_trace_single = &NativeTrace::getInstance(1);
     if (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY) {
+        Timer t;
+        t.now();
         while (pop_frames_cnt) {
             uint8_t to_pop = (pop_frames_cnt > 16 ? 16 : pop_frames_cnt);
             pop_frames_cnt -= to_pop;
@@ -491,6 +496,7 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
         NativeCpuSampleRecord record{hooks::Allocator::CPU_SAMPLING, native_index};
         bool ret = writeMsgWithContext(d_last.thread_id, cpu_trace_single->backtrace_thread_id, record);
         cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
+        DebugInfo::track_cpu_time += t.elapsedNs();
     }
     bool ret = writeMsgWithContext(d_last.thread_id, tid, item);
     DebugInfo::write_threadspecific_record_msg_time += t.elapsedNs();
