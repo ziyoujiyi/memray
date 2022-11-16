@@ -19,7 +19,8 @@ namespace memray::tracking_api {
 
 #define NATIVE_TRACE_MAX_SIZE 1024
 #define MAX_STROE_BACKTRACE 1
-#define BACKTRACE_RESERVE 64
+#define BACKTRACE_SKIP 2
+
 using ip_t = frame_id_t;
 
 class BackTraceData
@@ -122,14 +123,14 @@ class NativeTrace
                 (void**)d_data_ptr->data(),
                 NATIVE_TRACE_MAX_SIZE);  // https://github.com/dropbox/libunwind/blob/master/doc/unw_backtrace.man
                                          // https://github.com/dropbox/libunwind/blob/16bf4e5e498c7fc528256843a4a724edc2753ffd/src/x86_64/Gtrace.c
-        if (likely(size > 0)) {
-            (*d_sizes_ptr)[*d_cnt_ptr] = size;
+        if (likely(size > BACKTRACE_SKIP)) {
+            (*d_sizes_ptr)[*d_cnt_ptr] = size - BACKTRACE_SKIP;
             //(*d_cnt_ptr)++;
-            // d_skip = size > BACKTRACE_RESERVE ? (size - BACKTRACE_RESERVE) : 0;
-            d_skip = 0;
+            d_skip = BACKTRACE_SKIP;
             DebugInfo::backtrace_time += t.elapsedNs();
             return true;
         } else {
+            (*d_sizes_ptr)[*d_cnt_ptr] = 0;
             DebugInfo::backtrace_time += t.elapsedNs();
             return false;
         }
