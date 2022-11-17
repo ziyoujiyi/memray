@@ -198,7 +198,6 @@ PythonStackTracker::emitPendingPushesAndPops()
         }
     }
     auto first_to_emit = it.base();
-    size_t sz = d_stack->size();
     // Emit pending pops
     Tracker::getTracker()->popFrames(d_num_pending_pops);
     d_num_pending_pops = 0;
@@ -249,7 +248,6 @@ PythonStackTracker::emitPendingPushesAndPopsTmp()
         }
     }
     auto first_to_emit = it.base();
-    size_t sz = d_stack->size();
     // Emit pending pops
     Tracker::getTracker()->popFramesTmp(d_num_pending_pops);
     d_num_pending_pops = 0;
@@ -593,7 +591,7 @@ Tracker::Tracker(
 , d_trace_python_allocators(trace_python_allocators)
 {
     MY_DEBUG(">>> main thread id is: %lu", thread_id());
-    MY_DEBUG("memory_interval: %ld ms", d_memory_interval);
+    MY_DEBUG("memory_interval: %lu ms", d_memory_interval);
     // Note: this must be set before the hooks are installed.
     d_instance = this;
 
@@ -629,7 +627,7 @@ Tracker::Tracker(
             LOG(ERROR) << "sigaction error";
         }
 
-        MY_DEBUG("cpu profiler is on && cpu_interval: %ld ms", d_cpu_interval);
+        MY_DEBUG("cpu profiler is on && cpu_interval: %lu ms", d_cpu_interval);
 
         struct itimerval tick, old_tick;
         memset(&tick, 0, sizeof(tick));
@@ -974,14 +972,14 @@ Tracker::trackAllocationImpl(void* ptr, size_t size, hooks::Allocator func)
                         return d_writer->writeUnresolvedNativeFrameMsg(UnresolvedNativeFrame{ip, index});
                     });
         }
-        DebugInfo::tracked_native_allocation++;
+        // DebugInfo::tracked_native_allocation++;
         NativeAllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func, native_index};
         if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;
             deactivate();
         }
     } else {
-        DebugInfo::tracked_allocation++;
+        // DebugInfo::tracked_allocation++;
         AllocationRecord record{reinterpret_cast<uintptr_t>(ptr), size, func};
         if (!d_writer->writeThreadSpecificRecordMsg(thread_id(), record)) {
             std::cerr << "Failed to write output, deactivating tracking" << std::endl;

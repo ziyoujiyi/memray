@@ -1,4 +1,5 @@
 <<'COMMENT'
+The following words are about second-develop:
 Firstly, please ensure it is in gsim env.
 1. Install node js env
    - cd ~ && mkdir nodeenv
@@ -17,18 +18,9 @@ Firstly, please ensure it is in gsim env.
    - vim ~/.local/lib/python3.7/site-packages/easy-install.pth && add '/home/bwang/memray/src'
    - vim ~/.local/lib/python3.7/site-packages/memray.egg-link && add '/home/bwang/memray/src'
    - ensure 'TEST_BUILD = True' in setup.py
-   - sh compile.sh
+   - sh bw_compile.sh
 
-3. How to use?
-   - support memory profiler, use 'memray -h' for any help
-   - support cpu profiler(only summary / flamegraph)
-   - examples:
-    #memray run --native --trace-cpu=1 --cpu-interval-ms=10 --memory-interval-ms=100 --force -o output.bin -m tutorial
-    #memray flamegraph --trace-cpu=0 --filter-boring-frame=0 output.bin -f -o mem.html
-    #memray flamegraph --trace-cpu=1 --filter-boring-frame=0 output.bin -f -o cpu.html
-    #memray summary --trace-cpu=1 output.bin
-
-4. Develop guides
+3. Develop guides
    - branch name: 'py37_adapt'
    - python log tools: logger, c/c++ log tools: MY_DEBUG
 COMMENT

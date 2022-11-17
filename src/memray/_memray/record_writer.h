@@ -421,7 +421,7 @@ void inline RecordWriter::writeMsgWithContext(thread_id_t& last_tid, thread_id_t
         pushMsgNode();
     }
     Msg* msg = getOneAvaiableMsgNode();
-    bool ret = writeRecordMsgUnsafe(msg, item);
+    writeRecordMsgUnsafe(msg, item);
     pushMsgNode();
     // DebugInfo::write_msg_with_context_time += t.elapsedNs();
     return;
