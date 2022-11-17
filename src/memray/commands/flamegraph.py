@@ -63,10 +63,26 @@ class FlamegraphCommand(HighWatermarkCommand):
             const=1,
         )
         alloc_type_group.add_argument(
-            "--cpu-profiler-switch",
+            "--trace-cpu",
             action="store",
-            dest="cpu_profiler_switch",
-            help="default is off",
+            dest="trace_cpu",  # set the alia name xxx and use args.xxx later
+            help="type: int, default value is 0",
+            type=int,
+            default=0
+        )
+        alloc_type_group.add_argument(
+            "--trace-memory",
+            action="store",
+            dest="trace_memory",  # set the alia name xxx and use args.xxx later
+            help="type: int, default value is 0",
+            type=int,
+            default=0
+        )
+        parser.add_argument(
+            "--filter-boring-frame",
+            action="store",
+            dest="filter_boring_frame",  # set the alia name xxx and use args.xxx later
+            help="type: int, default is 0(off)",
             type=int,
             default=0
         )

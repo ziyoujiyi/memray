@@ -420,15 +420,20 @@ cdef class Tracker:
             memory usage over time that appears at the top of the flame graph,
             for instance. This parameter lets you adjust the frequency between
             updates, though you shouldn't need to change it.
+        cpu_interval_ms (int): setitimer handler frequency
+        trace_cpu (bool): cpu profiler on or off
+        trace_memory (bool): memory profiler on or off
     """
     cdef bool _native_traces
     cdef unsigned int _memory_interval_ms
+    cdef unsigned int _cpu_interval_ms
+    cdef unsigned int _trace_cpu
+    cdef unsigned int _trace_memory
     cdef bool _follow_fork
     cdef bool _trace_python_allocators
     cdef object _previous_profile_func
     cdef object _previous_thread_profile_func
     cdef unique_ptr[RecordWriter] _writer
-    #cdef unique_ptr[RecordWriter] _native_writer
 
     cdef unique_ptr[Sink] _make_writer(self, destination) except*:
         # Creating a Sink can raise Python exceptions (if is interrupted by signal
@@ -450,32 +455,31 @@ cdef class Tracker:
         else:
             raise TypeError("destination must be a SocketDestination or FileDestination")
 
-    def __init__(self, object file_name=None, object native_file_name=None, *, object destination=None, object native_destination=None,
-                  bool native_traces=False, unsigned int memory_interval_ms = 10,
+    def __init__(self, object file_name=None, object native_file_name=None, *, object destination=None, 
+                  bool native_traces=False, unsigned int memory_interval_ms, unsigned int cpu_interval_ms, bool trace_cpu, bool trace_memory,
                   bool follow_fork=False, bool trace_python_allocators=False):
         if sys.platform == "darwin":
             pprint(":warning: [bold red] Memray support in MacOS is still experimental [/]:warning:", file=sys.stderr)
             pprint("[yellow]Please report any issues at https://github.com/bloomberg/memray/issues[/]", file=sys.stderr)
             pprint("", file=sys.stderr)
 
-    def __cinit__(self, object file_name=None, object native_file_name=None, *, object destination=None, object native_destination=None,
-                  bool native_traces=False, unsigned int memory_interval_ms = 10,
+    def __cinit__(self, object file_name=None, object native_file_name=None, *, object destination=None, 
+                  bool native_traces=False, unsigned int memory_interval_ms, unsigned int cpu_interval_ms, bool trace_cpu, bool trace_memory, 
                   bool follow_fork=False, bool trace_python_allocators=False):
         if (file_name, destination).count(None) != 1:
             raise TypeError("Exactly one of 'file_name' or 'destination' argument must be specified")
-        #if (native_file_name, native_destination).count(None) != 1:
-        #    raise TypeError("Exactly one of 'native_file_name' or 'native_destination' argument must be specified")
 
         cdef cppstring command_line = " ".join(sys.argv)
         self._native_traces = native_traces
         self._memory_interval_ms = memory_interval_ms
-        #self._memory_interval_ms = 100   #TODO
+        self._cpu_interval_ms = cpu_interval_ms
+        self._trace_cpu = trace_cpu
+        self._trace_memory = trace_memory
         self._follow_fork = follow_fork
         self._trace_python_allocators = trace_python_allocators
 
         if file_name is not None:
             destination = FileDestination(path=file_name)
-            #native_destination = FileDestination(path=native_file_name)
 
         if follow_fork and not isinstance(destination, FileDestination):
             raise RuntimeError("follow_fork requires an output file")
@@ -483,9 +487,6 @@ cdef class Tracker:
         self._writer = make_unique[RecordWriter](
                 move(self._make_writer(destination)), command_line, native_traces
             )
-        #self._native_writer = make_unique[RecordWriter](
-        #        move(self._make_writer(native_destination)), command_line, native_traces
-        #    )
 
     @cython.profile(False)
     def __enter__(self):
@@ -498,7 +499,6 @@ cdef class Tracker:
         if self._writer == NULL:
             raise RuntimeError("Attempting to use stale output handle")
         writer = move(self._writer)
-        #other_writer = move(self._native_writer)
 
         self._previous_profile_func = sys.getprofile()
         self._previous_thread_profile_func = threading._profile_hook
@@ -511,6 +511,9 @@ cdef class Tracker:
             move(writer),
             self._native_traces,
             self._memory_interval_ms,
+            self._cpu_interval_ms,
+            self._trace_cpu,
+            self._trace_memory,
             self._follow_fork,
             self._trace_python_allocators,
         )

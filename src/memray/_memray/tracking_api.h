@@ -144,6 +144,9 @@ class Tracker
             std::unique_ptr<RecordWriter> record_writer,
             bool native_traces,
             unsigned int memory_interval,
+            unsigned int cpu_interval,
+            bool trace_cpu,
+            bool trace_memory,
             bool follow_fork,
             bool trace_python_allocators);
 
@@ -159,6 +162,9 @@ class Tracker
             std::unique_ptr<RecordWriter> record_writer,
             bool native_traces,
             unsigned int memory_interval,
+            unsigned int cpu_interval,
+            bool trace_cpu,
+            bool trace_memory,
             bool follow_fork,
             bool trace_python_allocators);
     static PyObject* destroyTracker();
@@ -238,7 +244,8 @@ class Tracker
         BackgroundThread(
                 std::shared_ptr<RecordWriter> record_writer,
                 unsigned int memory_interval,
-                unsigned int cpu_interval);
+                unsigned int cpu_interval,
+                bool trace_memory);
 
         ~BackgroundThread()
         {
@@ -246,20 +253,24 @@ class Tracker
 
         // Methods
         void start();
-        void startWriteRecord();
+        void startProcessRecord();
+        void startWriteCpuSample();
         void stop();
-        void stopWriteRecord();
+        void stopProcessRecord();
+        void stopWriteCpuSample();
 
       private:
         // Data members
         std::shared_ptr<RecordWriter> d_writer;
         bool d_stop{false};
-        bool d_stop_writer{false};
+        bool d_stop_process{false};
+        bool d_stop_cpu_sample_writer{false};
         unsigned int d_memory_interval;
         unsigned int d_cpu_interval;
+        bool d_trace_memory;
         std::mutex d_mutex;
         std::condition_variable d_cv;
-        std::thread d_thread, d_write_thread;
+        std::thread d_thread, d_process_thread, d_write_cpu_sample_thread;
         mutable std::ifstream d_procs_statm;
 
         // Methods
@@ -268,15 +279,18 @@ class Tracker
     };
 
     // Data members
-    // FrameCollection<RawFrame> d_frames;
     static std::atomic<bool> d_active;
     static std::unique_ptr<Tracker> d_instance_owner;
     static std::atomic<Tracker*> d_instance;
 
     std::shared_ptr<RecordWriter> d_writer;
+    // FrameCollection<RawFrame> d_frames;
     // FrameTree d_native_trace_tree;
     bool d_unwind_native_frames;
     unsigned int d_memory_interval;
+    unsigned int d_cpu_interval;
+    bool d_trace_cpu;
+    bool d_trace_memory;
     bool d_follow_fork;
     bool d_trace_python_allocators;
     linker::SymbolPatcher d_patcher;

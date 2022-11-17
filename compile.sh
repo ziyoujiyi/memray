@@ -23,9 +23,10 @@ Firstly, please ensure it is in gsim env.
    - support memory profiler, use 'memray -h' for any help
    - support cpu profiler(only summary / flamegraph)
    - examples:
-    #memray run --native --trace-python-allocators --force -o output.bin -m tutorial
-    #memray summary --cpu-profiler-switch 1 output.bin
-    #memray flamegraph --cpu-profiler-switch 1 output.bin -f -o yy.html
+    #memray run --native --trace-cpu=1 --cpu-interval-ms=10 --memory-interval-ms=100 --force -o output.bin -m tutorial
+    #memray flamegraph --trace-cpu=0 --filter-boring-frame=0 output.bin -f -o mem.html
+    #memray flamegraph --trace-cpu=1 --filter-boring-frame=0 output.bin -f -o cpu.html
+    #memray summary --trace-cpu=1 output.bin
 
 4. Develop guides
    - branch name: 'py37_adapt'

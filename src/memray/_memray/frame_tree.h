@@ -111,7 +111,7 @@ class NativeTrace
   public:
     enum WRITE_READ_FLAG { WRITE_ONLY = 0, READ_ONLY = 1 };
 
-    int32_t write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
+    static int32_t write_read_flag;
     thread_id_t backtrace_thread_id = 0;
 
   public:

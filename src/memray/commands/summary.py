@@ -55,12 +55,12 @@ class SummaryCommand:
             const=1,
         )
         alloc_type_group.add_argument(
-            "--cpu-profiler-switch",
+            "--trace-cpu",
             action="store",
-            dest="cpu_profiler_switch",
+            dest="trace_cpu",
             help="default is off",
             type=int,
-            default=0
+            default=1
         )
 
     def run(self, args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
@@ -76,7 +76,7 @@ class SummaryCommand:
         if reader.metadata.has_native_traces:
             warn_if_not_enough_symbols()
         try:
-            if args.cpu_profiler_switch:
+            if args.trace_cpu:
                 snapshot = iter(
                     reader.get_cpu_sample_records(merge_threads=True)
                 )
@@ -96,7 +96,7 @@ class SummaryCommand:
                 f"Failed to parse allocation records in {result_path}\nReason: {e}",
                 exit_code=1,
             )
-        if args.cpu_profiler_switch:
+        if args.trace_cpu:
             reporter = SummaryReporter.from_cpu_snapshot(
                 snapshot,
                 native=reader.metadata.has_native_traces,

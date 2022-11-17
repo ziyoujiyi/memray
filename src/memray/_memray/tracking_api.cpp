@@ -58,6 +58,7 @@ starts_with(const std::string& haystack, const std::string_view& needle)
 namespace memray::tracking_api {
 
 MEMRAY_FAST_TLS thread_local bool RecursionGuard::isActive = false;
+int32_t NativeTrace::write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
 
 static inline thread_id_t
 thread_id()
@@ -577,18 +578,24 @@ Tracker::Tracker(
         std::unique_ptr<RecordWriter> record_writer,
         bool native_traces,
         unsigned int memory_interval,
+        unsigned int cpu_interval,
+        bool trace_cpu,
+        bool trace_memory,
         bool follow_fork,
         bool trace_python_allocators)
 : d_writer(std::move(record_writer))
 , d_unwind_native_frames(native_traces)
 , d_memory_interval(memory_interval)
+, d_cpu_interval(cpu_interval)
+, d_trace_cpu(trace_cpu)
+, d_trace_memory(trace_memory)
 , d_follow_fork(follow_fork)
 , d_trace_python_allocators(trace_python_allocators)
 {
-    MY_DEBUG("main thread id: %lld >>> ", thread_id());
+    MY_DEBUG(">>> main thread id is: %lu", thread_id());
+    MY_DEBUG("memory_interval: %ld ms", d_memory_interval);
     // Note: this must be set before the hooks are installed.
     d_instance = this;
-    unsigned int cpu_interval = 11;  // ms
 
     static std::once_flag once;
     call_once(once, [] {
@@ -603,8 +610,6 @@ Tracker::Tracker(
         throw IoError{"Failed to write output header"};
     }
 
-    // d_writer->writeHeaderMsg(false);
-
     updateModuleCache();
 
     RecursionGuard guard;
@@ -616,40 +621,43 @@ Tracker::Tracker(
         registerPymallocHooks();
     }
 
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = trackCpu;
-    //  sigaddset(&sa.sa_mask,SIGQUIT);
-    //  sigaddset(&sa.sa_mask,SIGTERM)
-    //  sa.sa_flags = SA_NODEFER | SA_RESETHAND;
-    //  sa.sa_flags = 0;
+    if (d_trace_cpu) {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = trackCpu;
+        if (sigaction(SIGALRM, &sa, nullptr) < 0) {
+            LOG(ERROR) << "sigaction error";
+        }
 
-    if (sigaction(SIGALRM, &sa, nullptr) < 0) {
-        LOG(ERROR) << "sigaction error";
+        MY_DEBUG("cpu profiler is on && cpu_interval: %ld ms", d_cpu_interval);
+
+        struct itimerval tick, old_tick;
+        memset(&tick, 0, sizeof(tick));
+        tick.it_value.tv_sec = 0;
+        tick.it_value.tv_usec = 10000;
+        tick.it_interval.tv_sec = 0;
+        tick.it_interval.tv_usec = d_cpu_interval * 1000;
+        if (setitimer(ITIMER_REAL, &tick, &old_tick)) {
+            LOG(ERROR) << "set timer failed";
+        }
     }
-    // auto old_handler = signal(SIGALRM, trackCpu);
-    // assert(old_handler == SIG_DFL);
-    // signal(SIGALRM, old_handler);
 
-    MY_DEBUG("cpu_interval: %lld ms", cpu_interval);
-    MY_DEBUG("memory_interval: %d ms", memory_interval);
-
-    struct itimerval tick, oldTick;
-    memset(&tick, 0, sizeof(tick));
-    tick.it_value.tv_sec = 0;
-    tick.it_value.tv_usec = 10000;
-    tick.it_interval.tv_sec = 0;
-    tick.it_interval.tv_usec = cpu_interval * 1000;
-    int ret = setitimer(ITIMER_REAL, &tick, &oldTick);
-    if (ret) {
-        LOG(ERROR) << "set timer failed: " << ret;
+    d_background_thread = std::make_unique<BackgroundThread>(
+            d_writer,
+            d_memory_interval,
+            d_cpu_interval,
+            d_trace_memory);
+    if (d_trace_memory) {
+        d_background_thread->start();
+    } else {
+        d_background_thread->startWriteCpuSample();
     }
-    MY_DEBUG("tracker is not actived!");
-    d_background_thread = std::make_unique<BackgroundThread>(d_writer, memory_interval, cpu_interval);
-    d_background_thread->start();
-    d_background_thread->startWriteRecord();
+    d_background_thread->startProcessRecord();
 
-    d_patcher.overwrite_symbols();
+    if (d_trace_memory) {
+        d_patcher.overwrite_symbols();  // overwrite_symbols -> dl_iterate_phdr -> patch_symbols ->
+        // phdrs_callback -> overwrite_elf_table
+    }
     tracking_api::Tracker::activate();
 }
 
@@ -658,8 +666,12 @@ Tracker::~Tracker()
     RecursionGuard guard;
     tracking_api::Tracker::deactivate();
     PythonStackTracker::s_native_tracking_enabled = false;
-    d_background_thread->stop();
-    d_background_thread->stopWriteRecord();
+    if (d_trace_memory) {
+        d_background_thread->stop();
+    } else {
+        d_background_thread->stopWriteCpuSample();
+    }
+    d_background_thread->stopProcessRecord();
     d_patcher.restore_symbols();
     if (d_trace_python_allocators) {
         unregisterPymallocHooks();
@@ -684,10 +696,12 @@ Tracker::~Tracker()
 Tracker::BackgroundThread::BackgroundThread(
         std::shared_ptr<RecordWriter> record_writer,
         unsigned int memory_interval,
-        unsigned int cpu_interval)
+        unsigned int cpu_interval,
+        bool trace_memory)
 : d_writer(std::move(record_writer))
 , d_memory_interval(memory_interval)
 , d_cpu_interval(cpu_interval)
+, d_trace_memory(trace_memory)
 {
 #ifdef __linux__
     d_procs_statm.open("/proc/self/statm");
@@ -741,9 +755,9 @@ Tracker::BackgroundThread::getRSS() const
 void
 Tracker::BackgroundThread::start()
 {
-    assert(d_thread.get_id() == std::thread::id());
+    // assert(d_thread.get_id() == std::thread::id());
     d_thread = std::thread([&]() {
-        MY_DEBUG("entering BackgroundThread::start  %llu >>>", std::this_thread::get_id());
+        MY_DEBUG(">>> BackgroundThread::start thread id: %llu", std::this_thread::get_id());
         RecursionGuard::isActive = true;
         while (true) {
             {
@@ -760,7 +774,7 @@ Tracker::BackgroundThread::start()
                     Tracker::deactivate();
                     break;
                 }
-                if (!d_writer->writeRecordMsg(MemoryRecord{timeElapsed(), rss})) {  // no use ?
+                if (!d_writer->writeRecordMsg(MemoryRecord{timeElapsed(), rss})) {
                     std::cerr << "Failed to write output, deactivating tracking" << std::endl;
                     Tracker::deactivate();
                     break;
@@ -772,23 +786,24 @@ Tracker::BackgroundThread::start()
 }
 
 void
-Tracker::BackgroundThread::startWriteRecord()
+Tracker::BackgroundThread::startProcessRecord()
 {
-    assert(d_write_thread.get_id() == std::thread::id());
-    d_write_thread = std::thread([&]() -> void {
-        MY_DEBUG("entering BackgroundThread::startWriteRecord  %llu >>>", std::this_thread::get_id());
+    // assert(d_process_thread.get_id() == std::thread::id());
+    d_process_thread = std::thread([&]() -> void {
+        MY_DEBUG(">>> BackgroundThread::startProcessRecord thread id: %llu", std::this_thread::get_id());
         RecursionGuard::isActive = true;
         Msg* msg_ptr = nullptr;
+
         while (true) {
-            if (unlikely(d_stop_writer)) {
+            if (unlikely(d_stop_process)) {
                 break;
             };
             while (true) {
-                msg_ptr = d_writer->getOneMsg(d_stop_writer);
+                msg_ptr = d_writer->getOneMsg(d_stop_process);
                 if (msg_ptr) {
                     break;
                 }
-                if (unlikely(d_stop_writer)) {
+                if (unlikely(d_stop_process)) {
                     DebugInfo::printProcessDebugCnt();
                     return;
                 }
@@ -807,6 +822,24 @@ Tracker::BackgroundThread::startWriteRecord()
 }
 
 void
+Tracker::BackgroundThread::startWriteCpuSample()
+{
+    d_write_cpu_sample_thread = std::thread([&]() -> void {
+        MY_DEBUG(
+                ">>> BackgroundThread::startWriteCpuSample thread id: %llu",
+                std::this_thread::get_id());
+        RecursionGuard::isActive = true;
+        while (true) {
+            if (unlikely(d_stop_cpu_sample_writer)) {
+                break;
+            };
+            d_writer->writeCpuSampleInfoFirst();
+        }
+        DebugInfo::printProcessDebugCnt();
+    });
+}
+
+void
 Tracker::BackgroundThread::stop()
 {
     {
@@ -818,10 +851,17 @@ Tracker::BackgroundThread::stop()
 }
 
 void
-Tracker::BackgroundThread::stopWriteRecord()
+Tracker::BackgroundThread::stopWriteCpuSample()
 {
-    d_stop_writer = true;
-    d_write_thread.join();
+    d_stop_cpu_sample_writer = true;
+    d_write_cpu_sample_thread.join();
+}
+
+void
+Tracker::BackgroundThread::stopProcessRecord()
+{
+    d_stop_process = true;
+    d_process_thread.join();
 }
 
 void
@@ -856,7 +896,6 @@ Tracker::childFork()
     // std::unique_ptr<RecordWriter> new_native_writer;
     if (old_tracker && old_tracker->isActive() && old_tracker->d_follow_fork) {
         new_writer = old_tracker->d_writer->cloneInChildProcess();
-        // new_native_writer = old_tracker->d_other_writer->cloneInChildProcess();
     }
 
     if (!new_writer) {
@@ -878,6 +917,9 @@ Tracker::childFork()
             std::move(new_writer),
             old_tracker->d_unwind_native_frames,
             old_tracker->d_memory_interval,
+            old_tracker->d_cpu_interval,
+            old_tracker->d_trace_cpu,
+            old_tracker->d_trace_memory,
             old_tracker->d_follow_fork,
             old_tracker->d_trace_python_allocators));
     RecursionGuard::isActive = false;
@@ -1051,7 +1093,6 @@ Tracker::updateModuleCacheImpl()
 
     dl_iterate_phdr(&dl_iterate_phdr_callback, d_writer.get());
     // https://www.onitroad.com/jc/linux/man-pages/linux/man3/dl_iterate_phdr.3.html
-    // dl_iterate_phdr(&dl_iterate_phdr_callback, d_other_writer.get());
 }
 
 void
@@ -1172,22 +1213,28 @@ Tracker::createTracker(
         std::unique_ptr<RecordWriter> record_writer,
         bool native_traces,
         unsigned int memory_interval,
+        unsigned int cpu_interval,
+        bool trace_cpu,
+        bool trace_memory,
         bool follow_fork,
         bool trace_python_allocators)
 {
-    Timer t;
-    t.now();
-    // Note: the GIL is used for synchronization of the singleton
+    // Timer t;
+    // t.now();
+    //  Note: the GIL is used for synchronization of the singleton
     d_instance_owner.reset(new Tracker(
             std::move(record_writer),
             native_traces,
             memory_interval,
+            cpu_interval,
+            trace_cpu,
+            trace_memory,
             follow_fork,
             trace_python_allocators));
-    // PythonStackTracker::get().emitPendingPushesAndPops();
-    MY_DEBUG("Tracker ins created && is activated");
-    DebugInfo::prepare_tracker_ins_time += t.elapsedNs();
-
+    MY_DEBUG("Tracker instance has been created && is activated");
+    // DebugInfo::prepare_tracker_ins_time += t.elapsedNs();
+    // for test
+    /*
     void* ptr = hooks::malloc(99999999);  // use SysMalloc
     void* ptr2 = malloc(8888888);  // use selfdefine malloc
     void* ptr3 = intercept::malloc(6666666);  // use selfdefine malloc
@@ -1199,7 +1246,7 @@ Tracker::createTracker(
     } else {
         MY_DEBUG("test native malloc failed");
     }
-
+    */
     Py_RETURN_NONE;
 }
 

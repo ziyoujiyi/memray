@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import textwrap
+from textwrap import dedent
 from contextlib import closing
 from contextlib import suppress
 from typing import List
@@ -32,7 +33,6 @@ def _get_free_port() -> int:
 
 def _run_tracker(
     destination: Destination,
-    native_destination: Destination,
     args: argparse.Namespace,
     post_run_message: Optional[str] = None,
     follow_fork: bool = False,
@@ -44,7 +44,8 @@ def _run_tracker(
             kwargs["follow_fork"] = True
         if trace_python_allocators:
             kwargs["trace_python_allocators"] = True
-        tracker = Tracker(destination=destination, native_destination=native_destination, native_traces=args.native, memory_interval_ms = 10, **kwargs)  # sampling interval
+        tracker = Tracker(destination=destination, native_traces=args.native, memory_interval_ms = args.memory_interval_ms, 
+            cpu_interval_ms = args.cpu_interval_ms, trace_cpu = args.trace_cpu, trace_memory = args.trace_memory, **kwargs)
     except OSError as error:
         raise MemrayCommandError(str(error), exit_code=1)
 
@@ -149,25 +150,14 @@ def _run_with_file_output(args: argparse.Namespace) -> None:
     else:
         filename = args.output
 
-    if args.native_output is None:
-        native_script_name = args.script
-        if args.run_as_cmd:
-            native_script_name = "native-string"
-
-        native_output = f"memray-native-trace-{os.path.basename(native_script_name)}.{os.getpid()}.bin"
-        native_filename = os.path.join(os.path.dirname(native_script_name), native_output)
-    else:
-        native_filename = args.native_output
-
     if not args.quiet:
         print(f"Writing profile results into {filename}")
-        print(f"Writing native trace into {native_filename}")
 
     example_report_generation_message = textwrap.dedent(
         f"""
         [memray] Successfully generated profile results.
 
-        You can now generate reports from the stored allocation records.
+        You can now generate reports from the stored allocation & records.
         Some example commands to generate reports:
 
         {sys.executable} -m memray flamegraph {filename}
@@ -177,13 +167,9 @@ def _run_with_file_output(args: argparse.Namespace) -> None:
     destination = FileDestination(
         path=filename, overwrite=args.force, compress_on_exit=args.compress_on_exit
     )
-    native_destination = FileDestination(
-        path=native_filename, overwrite=args.force, compress_on_exit=args.compress_on_exit
-    )
     try:
         _run_tracker(
             destination=destination,
-            native_destination=native_destination,
             args=args,
             post_run_message=example_report_generation_message,
             follow_fork=args.follow_fork,
@@ -198,11 +184,39 @@ class RunCommand:
 
     def prepare_parser(self, parser: argparse.ArgumentParser) -> None:
         parser.usage = "%(prog)s [-m module | -c cmd | file] [args]"
-        native_output_group = parser.add_mutually_exclusive_group()
-        native_output_group.add_argument(
-            "-no",
-            "--native_output",
-            help="Output file name (default: <process_name>.<pid>.native.bin)",
+        cpu_group = parser.add_mutually_exclusive_group()
+        parser.add_argument(
+            "--trace-cpu",
+            action="store",  # is the action to be taken when this argument is found on the command line.
+            dest="trace_cpu",
+            help=textwrap.dedent('''\
+            cpu profiler switch \n
+            type: int, default value is 1(on),
+            '''),
+            type=int,
+            default=1,
+        )
+        parser.add_argument(
+            "--trace-memory",
+            action="store",  # is the action to be taken when this argument is found on the command line.
+            dest="trace_memory",
+            help="memory profiler switch \n type: int, default value is 1(on)",
+            type=int,
+            default=1,
+        )
+        parser.add_argument(
+            "--cpu-interval-ms",
+            help=textwrap.dedent(
+                '''
+                type: int(ms), default value is 11 \n
+                cpu sampling frequency
+                '''
+            ),
+            action="store",
+            dest="cpu_interval_ms",
+            type=int,
+            default=11,
+
         )
         output_group = parser.add_mutually_exclusive_group()
         output_group.add_argument(
@@ -250,6 +264,20 @@ class RunCommand:
             action="store_true",
             help="Record allocations made by the Pymalloc allocator",
             default=False,
+        )
+        parser.add_argument(
+            "--memory-interval-ms",
+            metavar="N",
+            help=dedent(
+                """
+                type: int(ms), default value is 10 
+                get rss: read /proc/self/statm frequency
+                """
+            ),
+            action="store",
+            dest="memory_interval_ms",
+            type=int,
+            default=10,
         )
         parser.add_argument(
             "-q",

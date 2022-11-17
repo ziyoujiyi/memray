@@ -208,15 +208,16 @@ class HighWatermarkCommand:
         self.output_file = output_file
         if hasattr(args, "split_threads"):
             kwargs["merge_threads"] = not args.split_threads
+        kwargs["filter_boring_frame"] = args.filter_boring_frame
 
         logger.info(args)
-        if args.cpu_profiler_switch:
+        if args.trace_cpu:
             self.write_cpu_report(
                 result_path,
                 output_file,
                 **kwargs
             )
-        else:
+        if args.trace_memory:
             self.write_report(
                 result_path,
                 output_file,

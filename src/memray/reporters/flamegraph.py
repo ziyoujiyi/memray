@@ -93,7 +93,8 @@ class FlameGraphReporter:
         allocations: Iterator[AllocationRecord],
         memory_records: Iterable[MemorySnapshot],
         *,
-        native_traces: bool
+        native_traces: bool,
+        **kwargs
     ) -> "FlameGraphReporter":
         data: Dict[str, Any] = {
             "name": "<root>",
@@ -124,7 +125,8 @@ class FlameGraphReporter:
                 if is_cpython_internal(stack_frame):
                     num_skipped_frames += 1
                     continue
-                if is_frame_boring(stack_frame):
+                #from memray.commands.common import logger
+                if is_frame_boring(stack_frame, kwargs["filter_boring_frame"]):
                     num_skipped_frames += 1
                     continue
                 if (stack_frame, thread_id) not in current_frame["children"]:
@@ -152,7 +154,8 @@ class FlameGraphReporter:
         cpu_samples: Iterator[CpuSampleRecord],
         cpu_records: Iterable[CpuSnapshot],
         *,
-        native_traces: bool
+        native_traces: bool,
+        **kwargs
     ) -> "FlameGraphReporter":
         data: Dict[str, Any] = {
             "name": "<root>",
@@ -183,7 +186,7 @@ class FlameGraphReporter:
                 if is_cpython_internal(stack_frame):
                     num_skipped_frames += 1
                     continue
-                if is_frame_boring(stack_frame):
+                if is_frame_boring(stack_frame, kwargs["filter_boring_frame"]):
                     num_skipped_frames += 1
                     continue
                 if (stack_frame, thread_id) not in current_frame["children"]:

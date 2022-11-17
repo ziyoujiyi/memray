@@ -115,6 +115,7 @@ class RecordWriter
     bool inline writeThreadSpecificRecord(thread_id_t tid, const T& item);
     template<typename T>
     bool inline writeThreadSpecificRecordMsg(thread_id_t tid, const T& item);
+    void inline writeCpuSampleInfoFirst();
 
     bool inline writeRecordUnsafe(const FramePop& record);
     bool inline writeRecordMsgUnsafe(Msg* msg, const FramePop& record);
@@ -448,13 +449,8 @@ bool inline RecordWriter::writeRecordMsg(const T& item)  // for FRAME_ID & MEMOR
     return ret;
 }
 
-template<typename T>
-bool inline RecordWriter::writeThreadSpecificRecordMsg(
-        thread_id_t tid,
-        const T& item)  // only one thread write
+void inline RecordWriter::writeCpuSampleInfoFirst()
 {
-    // Timer t;
-    // t.now();
     if (cpu_trace_single->write_read_flag == NativeTrace::WRITE_READ_FLAG::READ_ONLY) {
         // Timer t;
         // t.now();
@@ -492,6 +488,16 @@ bool inline RecordWriter::writeThreadSpecificRecordMsg(
         cpu_trace_single->write_read_flag = NativeTrace::WRITE_READ_FLAG::WRITE_ONLY;
         // DebugInfo::track_cpu_time += t.elapsedNs();
     }
+}
+
+template<typename T>
+bool inline RecordWriter::writeThreadSpecificRecordMsg(
+        thread_id_t tid,
+        const T& item)  // only one thread write
+{
+    // Timer t;
+    // t.now();
+    writeCpuSampleInfoFirst();
     writeMsgWithContext(d_last.thread_id, tid, item);
     // DebugInfo::write_threadspecific_record_msg_time += t.elapsedNs();
     return true;
@@ -530,7 +536,7 @@ bool inline RecordWriter::writeRecordUnsafe(const FramePop& record)
 
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const FramePop& record)
 {
-    DebugInfo::write_frame_pop_msg++;
+    // DebugInfo::write_frame_pop_msg++;
 
     msg->token = {RecordType::FRAME_POP, record.count};
     return true;
