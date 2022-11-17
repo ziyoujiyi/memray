@@ -277,7 +277,7 @@ class RunCommand:
             action="store",
             dest="memory_interval_ms",
             type=int,
-            default=10,
+            default=100,
         )
         parser.add_argument(
             "-q",

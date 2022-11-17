@@ -46,7 +46,7 @@ struct Msg
     SegmentHeaderInfo d_sgh;
     Segment d_sg;
 };
-using MsgQ = SPSCQueueOPT<Msg, 4096>;
+using MsgQ = SPSCQueueOPT<Msg, 8192>;
 
 class RecordWriter
 {
@@ -292,6 +292,7 @@ void inline RecordWriter::procRecordMsg(const Msg* msg)
     // DebugInfo::total_processed_msg++;
 
     switch (msg->token.record_type) {
+        /*
         case RecordType::OTHER: {
             switch (static_cast<OtherRecordType>(msg->token.flags)) {
                 case OtherRecordType::HEADER: {
@@ -302,15 +303,16 @@ void inline RecordWriter::procRecordMsg(const Msg* msg)
                 } break;
             }
         } break;
-        case RecordType::MEMORY_MAP_START: {
-            procMemoryMapStartMsg(msg->token);
-        } break;
-        case RecordType::SEGMENT_HEADER: {
-            procSegmentHeaderMsg(msg->token, msg->d_sgh);
-        } break;
-        case RecordType::SEGMENT: {
-            procSegmentMsg(msg->token, msg->d_sg);
-        } break;
+        */
+        // case RecordType::MEMORY_MAP_START: {
+        //     procMemoryMapStartMsg(msg->token);
+        // } break;
+        // case RecordType::SEGMENT_HEADER: {
+        //    procSegmentHeaderMsg(msg->token, msg->d_sgh);
+        //} break;
+        // case RecordType::SEGMENT: {
+        //    procSegmentMsg(msg->token, msg->d_sg);
+        //} break;
         case RecordType::FRAME_PUSH: {
             procFramePushMsg(msg->token, msg->d_last, msg->d_frame_push);
         } break;
@@ -335,9 +337,9 @@ void inline RecordWriter::procRecordMsg(const Msg* msg)
         case RecordType::MEMORY_RECORD: {
             procMemoryRecordMsg(msg->token, msg->d_header.stats, msg->d_memory_record);
         } break;
-        case RecordType::CPU_RECORD: {
-            procCpuRecordMsg();
-        } break;
+        // case RecordType::CPU_RECORD: {
+        //     procCpuRecordMsg();
+        // } break;
         case RecordType::NATIVE_TRACE_INDEX: {
             procUnresolvedNativeFrameMsg(msg->token, msg->d_last, msg->d_native_frame_record);
         } break;
@@ -464,7 +466,7 @@ void inline RecordWriter::writeCpuSampleInfoFirst()
                     FramePop{to_pop});
         }
 
-        for (int32_t i = 0; i < raw_frames_cnt; i++) {
+        for (size_t i = 0; i < raw_frames_cnt; i++) {
             const auto [frame_id, is_new_frame] = d_frames.getIndex(raw_frames[i]);
             if (is_new_frame) {
                 const pyrawframe_map_val_t& frame_index{frame_id, raw_frames[i]};
@@ -537,8 +539,8 @@ bool inline RecordWriter::writeRecordUnsafe(const FramePop& record)
 bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const FramePop& record)
 {
     // DebugInfo::write_frame_pop_msg++;
-
-    msg->token = {RecordType::FRAME_POP, record.count};
+    uint8_t to_pop = record.count;
+    msg->token = {RecordType::FRAME_POP, to_pop};
     return true;
 }
 

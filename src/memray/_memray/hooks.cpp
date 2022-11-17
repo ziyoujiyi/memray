@@ -48,6 +48,7 @@ AllocatorKind
 allocatorKind(const Allocator& allocator)
 {
     switch (allocator) {
+        case Allocator::CPU_SAMPLING:
         case Allocator::CALLOC:
         case Allocator::MALLOC:
         case Allocator::MEMALIGN:
