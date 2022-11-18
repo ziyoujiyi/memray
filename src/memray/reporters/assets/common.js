@@ -208,9 +208,10 @@ export function makeCpuTooltipString(data, totalCount, merge_threads) {
   if (data.location !== undefined) {
     location = `File ${data.location[1]}, line ${data.location[2]} in ${data.location[0]}`;
   }
-
+  //const ratio = (data.n_cpu_samples / totalCount).toFixed(4) * 100;
+  const ratio = Math.ceil(10000 * data.n_cpu_samples / totalCount) / 100;
   const plural = data.n_cpu_samples > 1 ? "s" : "";
-  const cpu_samples_label = `${data.n_cpu_samples} sample${plural}`;
+  const cpu_samples_label = `${data.n_cpu_samples} sample${plural} (${ratio}%)`;
   let displayString = `${location}<br>${cpu_samples_label}`;
   if (merge_threads === false) {
     displayString = displayString.concat(`<br>Thread ID: ${data.thread_id}`);

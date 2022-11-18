@@ -173,11 +173,10 @@ class HighWatermarkCommand:
             reader = FileReader(os.fspath(result_path), report_progress=True)
             if reader.cpumetadata.has_native_traces:
                 warn_if_not_enough_symbols()
-
             snapshot = reader.get_cpu_sample_records(
                 merge_threads=merge_threads if merge_threads is not None else True
             )
-            cpu_records = tuple(reader.get_cpu_snapshots())
+            cpu_records = tuple(reader.get_cpu_snapshots())  # only a little use
             reporter = self.reporter_factory[1](
                 cpu_samples=snapshot, cpu_records=cpu_records, native_traces=reader.cpumetadata.has_native_traces, **kwargs
             )

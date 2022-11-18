@@ -13,7 +13,7 @@ from memray import MemorySnapshot
 from memray import CpuSnapshot
 from memray import Metadata
 from memray import CpuMetadata
-from memray.reporters.frame_tools import StackFrame, is_frame_boring
+from memray.reporters.frame_tools import StackFrame, is_boring_frame
 from memray.reporters.frame_tools import is_cpython_internal
 from memray.reporters.frame_tools import is_frame_interesting
 from memray.reporters.templates import render_report
@@ -126,7 +126,7 @@ class FlameGraphReporter:
                     num_skipped_frames += 1
                     continue
                 #from memray.commands.common import logger
-                if is_frame_boring(stack_frame, kwargs["filter_boring_frame"]):
+                if is_boring_frame(stack_frame, kwargs["filter_boring_frame"]):
                     num_skipped_frames += 1
                     continue
                 if (stack_frame, thread_id) not in current_frame["children"]:
@@ -172,7 +172,7 @@ class FlameGraphReporter:
             size = cpu_sample.n_cpu_samples
             thread_id = cpu_sample.thread_name
 
-            data["n_cpu_samples"] += cpu_sample.n_cpu_samples
+            data["n_cpu_samples"] += size
             data["value"] += cpu_sample.n_cpu_samples
 
             current_frame = data
@@ -186,7 +186,7 @@ class FlameGraphReporter:
                 if is_cpython_internal(stack_frame):
                     num_skipped_frames += 1
                     continue
-                if is_frame_boring(stack_frame, kwargs["filter_boring_frame"]):
+                if is_boring_frame(stack_frame, kwargs["filter_boring_frame"]):
                     num_skipped_frames += 1
                     continue
                 if (stack_frame, thread_id) not in current_frame["children"]:
@@ -238,6 +238,7 @@ class FlameGraphReporter:
             metadata=metadata,
             cpu_records=self.cpu_records,
             merge_threads=merge_threads,
+            total_cpu_samples = metadata.total_cpu_samples
         )
         #breakpoint()
         print(html_code, file=outfile)

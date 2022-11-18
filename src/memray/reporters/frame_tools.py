@@ -1,6 +1,7 @@
 """Tools for processing and filtering stack frames."""
 import re
 from typing import Tuple
+import re
 
 Symbol = str
 File = str
@@ -34,38 +35,33 @@ SYMBOL_IGNORELIST = {
 
 SYMBOL_BLACKLIST = {
     "call_function.lto_priv.0",
-    "_PyFunction_FastCallKeywords",
-    "_PyCFunction_FastCallKeywords",
-    "_PyMethodDef_RawFastCallKeywords",
     "PyImport_ImportModuleLevelObject.localalias",
-    "_PyObject_CallMethodIdObjArgs",
     "object_vacall",
-    "_PyFunction_FastCallDict",
-    "_find_and_load",
-    "_find_and_load_unlocked",
     "_load_unlocked",
     "exec_module",
     "_call_with_frames_removed",
-    "_PyCFunction_FastCallDict",
-    "_PyMethodDef_RawFastCallDict",
-    "_PyEval_EvalCodeWithName",
-    "builtin_exec",
-    "PyEval_EvalCode",
-    "PyEval_EvalCodeEx",
     "_handle_fromlist",
-    "PyCFunction_Call",
-    "builtin___import__",
     "get_code",
     "_compile_bytecode",
     "marshal_loads.lto_priv.0",
     "r_object.lto_priv.0",
-    "_imp_exec_builtin",
     "Dispatcher_call(Dispatcher*, _object*, _object*)",
     "compile_and_invoke(Dispatcher*, _object*, _object*, _object*)",
-
 }
 
-def is_frame_boring(frame: StackFrame, filter_boring_frame) -> bool:  # possibly lead to lack of 'litte' functions
+BORING_KEY_STRS = {
+    "PyObject_Call",
+    "PyEval",
+    "builtin",
+    "PyMethod",
+    "PyCFunction",
+    "PyFunction",
+    "_find_and_load",
+    "partial_call",
+    "copyto",
+}
+
+def is_boring_frame(frame: StackFrame, filter_boring_frame) -> bool:  # possibly lead to lack of 'litte' functions
     if filter_boring_frame == 0:
         return False
     function, file, *_ = frame
@@ -78,6 +74,10 @@ def is_frame_boring(frame: StackFrame, filter_boring_frame) -> bool:  # possibly
 
     if function in SYMBOL_BLACKLIST or (function in SYMBOL_IGNORELIST):
         return True
+
+    for str in BORING_KEY_STRS:
+        if function.find(str) >= 0:
+           return True      
     return False
 
 

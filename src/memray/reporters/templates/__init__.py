@@ -58,6 +58,7 @@ def cpu_render_report(
     metadata: CpuMetadata,
     cpu_records: Iterable[CpuSnapshot],
     merge_threads: bool,
+    total_cpu_samples
 ) -> str:
     env = get_render_environment()
     template = env.get_template(kind + ".html")
@@ -71,4 +72,5 @@ def cpu_render_report(
         metadata=metadata,
         cpu_records=cpu_records,
         merge_threads=merge_threads,
+        total_cpu_samples = total_cpu_samples
     )

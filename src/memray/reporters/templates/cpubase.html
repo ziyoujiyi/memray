@@ -22,8 +22,10 @@
       <div class="btn-toolbar">
         {% block topbar_buttons %}
         {% endblock topbar_buttons %}
-        <button type="button" class="btn btn-outline-light mr-3" data-toggle="modal" data-target="#statsModal">Stats</button>
-        <button type="button" class="btn btn-outline-light mr-3" data-toggle="modal" data-target="#helpModal">Help</button>
+        <button type="button" class="btn btn-outline-light mr-3" data-toggle="modal"
+          data-target="#statsModal">Stats</button>
+        <button type="button" class="btn btn-outline-light mr-3" data-toggle="modal"
+          data-target="#helpModal">Help</button>
       </div>
       {% block topbar_search %}
       <input id="searchTerm" class="form-control" type="search" placeholder="Search">
@@ -31,7 +33,8 @@
     </div>
   </nav>
   <nav class="navbar navbar-dark bg-dark px-0">
-    <div id="smallCpuGraph" class="w-100" data-toggle="modal" data-target="#cpuModal" onclick="javascript:resizeCpuGraph();"></div>
+    <div id="smallCpuGraph" class="w-100" data-toggle="modal" data-target="#cpuModal"
+      onclick="javascript:resizeCpuGraph();"></div>
   </nav>
 
   <!-- Main Content -->
@@ -46,7 +49,8 @@
   </main>
 
   <!-- Stats Modal -->
-  <div class="modal fade" id="memoryModal" tabindex="-1" role="dialog" aria-labelledby="memoryModalLabel" aria-hidden="true">
+  <div class="modal fade" id="memoryModal" tabindex="-1" role="dialog" aria-labelledby="memoryModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -66,7 +70,8 @@
   </div>
 
   <!-- Stats Modal -->
-  <div class="modal fade" id="statsModal" tabindex="-1" role="dialog" aria-labelledby="statsModalLabel" aria-hidden="true">
+  <div class="modal fade" id="statsModal" tabindex="-1" role="dialog" aria-labelledby="statsModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -78,8 +83,8 @@
         <div class="modal-body">
           Command line: <code>{{ metadata.command_line }}</code><br>
           Start time: {{ metadata.cpu_profiler_start_time }}<br>
-          End time:   {{ metadata.cpu_profiler_end_time }}<br>
-          Total number of cpuSamples: {{ metadata.total_cpu_samples }}<br>
+          End time: {{ metadata.cpu_profiler_end_time }}<br>
+          Total number of cpu samples: {{ metadata.total_cpu_samples }}<br>
           Total number of frames seen: {{ metadata.total_frames }}<br>
         </div>
         <div class="modal-footer">
@@ -90,7 +95,8 @@
   </div>
 
   <!-- Help Modal -->
-  <div class="modal fade" id="helpModal" tabindex="-1" role="dialog" aria-labelledby="helpModalLabel" aria-hidden="true">
+  <div class="modal fade" id="helpModal" tabindex="-1" role="dialog" aria-labelledby="helpModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -118,9 +124,10 @@
   <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/plotly.js@2.11.1/dist/plotly.min.js"></script>
   <script type="text/javascript">
-    const data = {{ data|tojson }};
-    const merge_threads = {{ merge_threads|tojson }};
-    const cpu_records = {{ cpu_records|tojson }};
+    const data = {{ data| tojson }};
+    const merge_threads = {{ merge_threads| tojson }};
+    const cpu_records = {{ cpu_records| tojson }};
+    const total_cpu_samples = {{ total_cpu_samples| tojson }};
   </script>
   {% endblock scripts %}
 </body>

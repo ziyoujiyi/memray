@@ -753,7 +753,7 @@ cdef class FileReader:
                     break
         self._high_watermark = finder.getHighWatermark()
         #print("before allocations:", stats["n_allocations"])
-        stats["n_allocations"] = progress_indicator.num_processed  # is the same, why change ?
+        stats["n_allocations"] = progress_indicator.num_processed  
         #print("after allocations:", stats["n_allocations"])
 
     def __dealloc__(self):
@@ -788,7 +788,7 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-        #print("cpu_records_to_process: ", records_to_process)
+        print("cpu_records_to_process: ", records_to_process)
         while records_to_process > 0:
             PyErr_CheckSignals()
             ret = reader.nextRecord()

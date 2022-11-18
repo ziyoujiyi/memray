@@ -60,7 +60,9 @@ Interval::rightIntersects(const Interval& other) const
 void
 SnapshotAllocationAggregator::addCpuSample(const CpuSample& cpuSample)
 {
-    //MY_DEBUG("add cpu_sample - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_cpu_samples: %d", cpuSample.tid, cpuSample.native_frame_id, cpuSample.native_segment_generation, cpuSample.n_cpu_samples);
+    // MY_DEBUG("add cpu_sample - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d,
+    // n_cpu_samples: %d", cpuSample.tid, cpuSample.native_frame_id, cpuSample.native_segment_generation,
+    // cpuSample.n_cpu_samples);
     DebugInfo::add_cpu_sample++;
     d_ptr_to_cpuSample.emplace_back(cpuSample);
     return;
@@ -69,7 +71,9 @@ SnapshotAllocationAggregator::addCpuSample(const CpuSample& cpuSample)
 void
 SnapshotAllocationAggregator::addAllocation(const Allocation& allocation)
 {
-    //MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d, n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id, allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
+    // MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d,
+    // n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id,
+    // allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
     DebugInfo::add_allocation++;
     switch (hooks::allocatorKind(allocation.allocator)) {
         case hooks::AllocatorKind::SIMPLE_ALLOCATOR: {
@@ -98,8 +102,8 @@ SnapshotAllocationAggregator::addAllocation(const Allocation& allocation)
 reduced_cpu_snapshot_map_t
 SnapshotAllocationAggregator::getSnapshotCpuSamples(bool merge_threads)
 {
-    reduced_cpu_snapshot_map_t stack_to_cpuSample {};
-    
+    reduced_cpu_snapshot_map_t stack_to_cpuSample{};
+
     for (const auto& record : d_ptr_to_cpuSample) {
         const thread_id_t thread_id = merge_threads ? NO_THREAD_INFO : record.tid;
         auto loc_key = LocationKey{record.frame_index, record.native_frame_id, thread_id};
@@ -270,7 +274,7 @@ HighWatermarkFinder::updatePeak(size_t index) noexcept
 void
 HighWatermarkFinder::processCpuSample(const CpuSample& cpuSample)
 {
-    size_t index = d_cpuSamples_seen++;
+    size_t index = ++d_cpuSamples_seen;
     d_last_high_water_mark.total_cpu_sampling_cnt = index;
     return;
 }
@@ -406,10 +410,7 @@ Py_GetSnapshotAllocationRecords(
 }
 
 PyObject*
-Py_GetSnapshotCpuSampleRecords(
-        const cpuSamples_t& all_records,
-        size_t record_index,
-        bool merge_threads)
+Py_GetSnapshotCpuSampleRecords(const cpuSamples_t& all_records, size_t record_index, bool merge_threads)
 {
     if (all_records.empty()) {
         return PyList_New(0);
