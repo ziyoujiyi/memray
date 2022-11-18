@@ -1,7 +1,6 @@
 """Tools for processing and filtering stack frames."""
 import re
 from typing import Tuple
-import re
 
 Symbol = str
 File = str
