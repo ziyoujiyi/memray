@@ -792,7 +792,7 @@ RecordReader::getLatestCpuSample() const noexcept
 MemoryRecord
 RecordReader::getLatestMemoryRecord() const noexcept
 {
-    return d_latest_memory_record;  // use in flamegraph
+    return d_latest_memory_record;  // used in flamegraph
 }
 
 CpuRecord

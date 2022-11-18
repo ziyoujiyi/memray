@@ -220,7 +220,7 @@ mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) noexc
 {
     assert(hooks::mmap);
     void* ptr = hooks::mmap(addr, length, prot, flags, fd, offset);
-    tracking_api::Tracker::trackAllocation(ptr, length, hooks::Allocator::MMAP);
+    // tracking_api::Tracker::trackAllocation(ptr, length, hooks::Allocator::MMAP);
     return ptr;
 }
 
@@ -230,7 +230,7 @@ mmap64(void* addr, size_t length, int prot, int flags, int fd, off64_t offset) n
 {
     assert(hooks::mmap64);
     void* ptr = hooks::mmap64(addr, length, prot, flags, fd, offset);
-    tracking_api::Tracker::trackAllocation(ptr, length, hooks::Allocator::MMAP);
+    // tracking_api::Tracker::trackAllocation(ptr, length, hooks::Allocator::MMAP);
     return ptr;
 }
 #endif
@@ -239,7 +239,7 @@ int
 munmap(void* addr, size_t length) noexcept
 {
     assert(hooks::munmap);
-    tracking_api::Tracker::trackDeallocation(addr, length, hooks::Allocator::MUNMAP);
+    // tracking_api::Tracker::trackDeallocation(addr, length, hooks::Allocator::MUNMAP);
     return hooks::munmap(addr, length);
 }
 
