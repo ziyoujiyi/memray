@@ -15,6 +15,7 @@ cdef extern from "tracking_api.h" namespace "memray::tracking_api":
         object createTracker(
             unique_ptr[RecordWriter] record_writer,
             bool native_traces,
+            bool trace_mmap,
             unsigned int memory_interval,
             unsigned int cpu_interval,
             bool trace_cpu,

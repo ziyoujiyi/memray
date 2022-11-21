@@ -79,6 +79,15 @@ class FlamegraphCommand(HighWatermarkCommand):
             default=0
         )
         parser.add_argument(
+            "-tai",
+            "--trace-allocation-index",
+            action="store",
+            dest="trace_allocation_index",  
+            help="type: int, default value is 0",
+            type=int,
+            default=0
+        )
+        parser.add_argument(
             "--filter-boring-frame",
             action="store",
             dest="filter_boring_frame",  # set the alia name xxx and use args.xxx later

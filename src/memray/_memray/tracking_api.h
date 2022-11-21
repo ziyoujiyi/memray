@@ -143,6 +143,7 @@ class Tracker
     explicit Tracker(
             std::unique_ptr<RecordWriter> record_writer,
             bool native_traces,
+            bool trace_mmap,
             unsigned int memory_interval,
             unsigned int cpu_interval,
             bool trace_cpu,
@@ -161,6 +162,7 @@ class Tracker
     static PyObject* createTracker(
             std::unique_ptr<RecordWriter> record_writer,
             bool native_traces,
+            bool trace_mmap,
             unsigned int memory_interval,
             unsigned int cpu_interval,
             bool trace_cpu,
@@ -287,6 +289,7 @@ class Tracker
     // FrameCollection<RawFrame> d_frames;
     // FrameTree d_native_trace_tree;
     bool d_unwind_native_frames;
+    bool d_trace_mmap;
     unsigned int d_memory_interval;
     unsigned int d_cpu_interval;
     bool d_trace_cpu;

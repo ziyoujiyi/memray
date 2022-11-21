@@ -90,7 +90,7 @@ class HighWatermarkCommand:
     def determine_output_filename(self, results_file: pathlib.Path) -> pathlib.Path:
         output_name = results_file.with_suffix(self.suffix).name
         if output_name.startswith("memray-"):
-            output_name = output_name[len("memray-") :]
+            output_name = output_name[len("memray-"):]
 
         return results_file.parent / f"memray-{self.reporter_name[0]}-{output_name}"
 
@@ -124,7 +124,8 @@ class HighWatermarkCommand:
         **kwargs: Any
     ) -> None:
         try:
-            reader = FileReader(os.fspath(result_path), report_progress=True)
+            reader = FileReader(os.fspath(result_path), report_progress=True,
+                                trace_allocation_index=kwargs["trace_allocation_index"])
             if reader.metadata.has_native_traces:
                 warn_if_not_enough_symbols()
 
@@ -144,13 +145,13 @@ class HighWatermarkCommand:
             memory_records = tuple(reader.get_memory_snapshots())
             reporter = self.reporter_factory[0](
                 allocations=snapshot, memory_records=memory_records, native_traces=reader.metadata.has_native_traces, **kwargs
-                )
+            )
         except OSError as e:
             raise MemrayCommandError(
                 f"Failed to parse allocation records in {result_path}\nReason: {e}",
                 exit_code=1,
             )
-    
+
         with open(os.fspath(output_file.expanduser()), "w") as f:
             kwargs = {}
             if merge_threads is not None:
@@ -208,6 +209,7 @@ class HighWatermarkCommand:
         if hasattr(args, "split_threads"):
             kwargs["merge_threads"] = not args.split_threads
         kwargs["filter_boring_frame"] = args.filter_boring_frame
+        kwargs["trace_allocation_index"] = args.trace_allocation_index
 
         logger.info(args)
         if args.trace_cpu:

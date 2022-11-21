@@ -44,12 +44,12 @@ def _run_tracker(
             kwargs["follow_fork"] = True
         if trace_python_allocators:
             kwargs["trace_python_allocators"] = True
-        tracker = Tracker(destination=destination, native_traces=args.native, memory_interval_ms = args.memory_interval_ms, 
-            cpu_interval_ms = args.cpu_interval_ms, trace_cpu = args.trace_cpu, trace_memory = args.trace_memory, **kwargs)
+        tracker = Tracker(destination=destination, native_traces=args.native, trace_mmap=args.trace_mmap, memory_interval_ms=args.memory_interval_ms,
+                          cpu_interval_ms=args.cpu_interval_ms, trace_cpu=args.trace_cpu, trace_memory=args.trace_memory, **kwargs)
     except OSError as error:
         raise MemrayCommandError(str(error), exit_code=1)
 
-    with tracker:  ## first, call __enter__ method
+    with tracker:  # first, call __enter__ method
         pid = os.getpid()
         try:
             if args.run_as_module:
@@ -187,7 +187,8 @@ class RunCommand:
         cpu_group = parser.add_mutually_exclusive_group()
         parser.add_argument(
             "--trace-cpu",
-            action="store",  # is the action to be taken when this argument is found on the command line.
+            # is the action to be taken when this argument is found on the command line.
+            action="store",
             dest="trace_cpu",
             help=textwrap.dedent('''\
             cpu profiler switch \n
@@ -198,7 +199,8 @@ class RunCommand:
         )
         parser.add_argument(
             "--trace-memory",
-            action="store",  # is the action to be taken when this argument is found on the command line.
+            # is the action to be taken when this argument is found on the command line.
+            action="store",
             dest="trace_memory",
             help="memory profiler switch \n type: int, default value is 1(on)",
             type=int,
@@ -245,12 +247,18 @@ class RunCommand:
             default=None,
             type=int,
         )
-
         parser.add_argument(
             "--native",
             help="Track native (C/C++) stack frames as well",
             action="store_true",
             dest="native",
+            default=False,
+        )
+        parser.add_argument(
+            "--trace-mmap",
+            help="trace mmap/munmap, type: bool, default value is False",
+            action="store_true",  # store_true 表示一旦有这个参数，做出动作“将其值标为 True”，也就是没有时，默认状态下其值为 False
+            dest="trace_mmap",
             default=False,
         )
         parser.add_argument(

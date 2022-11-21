@@ -575,6 +575,7 @@ PythonStackTracker::clear()
 Tracker::Tracker(
         std::unique_ptr<RecordWriter> record_writer,
         bool native_traces,
+        bool trace_mmap,
         unsigned int memory_interval,
         unsigned int cpu_interval,
         bool trace_cpu,
@@ -583,6 +584,7 @@ Tracker::Tracker(
         bool trace_python_allocators)
 : d_writer(std::move(record_writer))
 , d_unwind_native_frames(native_traces)
+, d_trace_mmap(trace_mmap)
 , d_memory_interval(memory_interval)
 , d_cpu_interval(cpu_interval)
 , d_trace_cpu(trace_cpu)
@@ -651,7 +653,8 @@ Tracker::Tracker(
         d_background_thread->startWriteCpuSample();
     }
     d_background_thread->startProcessRecord();
-
+    
+    g_TRACE_MMAP = d_trace_mmap;
     if (d_trace_memory) {
         d_patcher.overwrite_symbols();  // overwrite_symbols -> dl_iterate_phdr -> patch_symbols ->
         // phdrs_callback -> overwrite_elf_table
@@ -914,6 +917,7 @@ Tracker::childFork()
     d_instance_owner.reset(new Tracker(
             std::move(new_writer),
             old_tracker->d_unwind_native_frames,
+            old_tracker->d_trace_mmap,
             old_tracker->d_memory_interval,
             old_tracker->d_cpu_interval,
             old_tracker->d_trace_cpu,
@@ -1210,6 +1214,7 @@ PyObject*
 Tracker::createTracker(
         std::unique_ptr<RecordWriter> record_writer,
         bool native_traces,
+        bool trace_mmap,
         unsigned int memory_interval,
         unsigned int cpu_interval,
         bool trace_cpu,
@@ -1223,6 +1228,7 @@ Tracker::createTracker(
     d_instance_owner.reset(new Tracker(
             std::move(record_writer),
             native_traces,
+            trace_mmap,
             memory_interval,
             cpu_interval,
             trace_cpu,

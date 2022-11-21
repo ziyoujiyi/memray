@@ -26,6 +26,7 @@ namespace memray {
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
 #define PER_WRITE_PY_RAW_FRAMES_MAX 128
+extern bool g_TRACE_MMAP;
 
 struct Timer
 {
@@ -175,9 +176,9 @@ class DebugInfo
     static void printReadDebugCnt()
     {
         MY_DEBUG("*******************************************************");
-        MY_DEBUG("read_unresolvednativeframe_msg: %lu", read_unresolvednativeframe_msg);
-        MY_DEBUG("add_cpu_sample: %lu", add_cpu_sample);
-        MY_DEBUG("add_allocation: %lu", add_allocation);
+        MY_DEBUG("..........read_unresolvednativeframe_msg: %lu", read_unresolvednativeframe_msg);
+        MY_DEBUG("..........add_cpu_sample: %lu", add_cpu_sample);
+        MY_DEBUG("..........add_allocation(for plot): %lu", add_allocation);
     }
 };
 

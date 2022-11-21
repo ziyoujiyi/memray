@@ -425,6 +425,7 @@ cdef class Tracker:
         trace_memory (bool): memory profiler on or off
     """
     cdef bool _native_traces
+    cdef bool _trace_mmap
     cdef unsigned int _memory_interval_ms
     cdef unsigned int _cpu_interval_ms
     cdef unsigned int _trace_cpu
@@ -456,7 +457,7 @@ cdef class Tracker:
             raise TypeError("destination must be a SocketDestination or FileDestination")
 
     def __init__(self, object file_name=None, object native_file_name=None, *, object destination=None, 
-                  bool native_traces=False, unsigned int memory_interval_ms, unsigned int cpu_interval_ms, bool trace_cpu, bool trace_memory,
+                  bool native_traces=False, bool trace_mmap=False, unsigned int memory_interval_ms, unsigned int cpu_interval_ms, bool trace_cpu, bool trace_memory,
                   bool follow_fork=False, bool trace_python_allocators=False):
         if sys.platform == "darwin":
             pprint(":warning: [bold red] Memray support in MacOS is still experimental [/]:warning:", file=sys.stderr)
@@ -464,13 +465,14 @@ cdef class Tracker:
             pprint("", file=sys.stderr)
 
     def __cinit__(self, object file_name=None, object native_file_name=None, *, object destination=None, 
-                  bool native_traces=False, unsigned int memory_interval_ms, unsigned int cpu_interval_ms, bool trace_cpu, bool trace_memory, 
+                  bool native_traces=False, bool trace_mmap=False, unsigned int memory_interval_ms, unsigned int cpu_interval_ms, bool trace_cpu, bool trace_memory, 
                   bool follow_fork=False, bool trace_python_allocators=False):
         if (file_name, destination).count(None) != 1:
             raise TypeError("Exactly one of 'file_name' or 'destination' argument must be specified")
 
         cdef cppstring command_line = " ".join(sys.argv)
         self._native_traces = native_traces
+        self._trace_mmap = trace_mmap
         self._memory_interval_ms = memory_interval_ms
         self._cpu_interval_ms = cpu_interval_ms
         self._trace_cpu = trace_cpu
@@ -510,6 +512,7 @@ cdef class Tracker:
         NativeTracker.createTracker(
             move(writer),
             self._native_traces,
+            self._trace_mmap,
             self._memory_interval_ms,
             self._cpu_interval_ms,
             self._trace_cpu,
@@ -681,8 +684,9 @@ cdef class FileReader:
     cdef HighWatermark _high_watermark
     cdef object _header
     cdef bool _report_progress
+    cdef size_t _trace_allocation_index
 
-    def __cinit__(self, object file_name, *, bool report_progress=False):
+    def __cinit__(self, object file_name, *, bool report_progress=False, size_t trace_allocation_index=0):
         try:
             self._file = open(file_name)
         except OSError as exc:
@@ -693,6 +697,7 @@ cdef class FileReader:
         ELSE:
             self._path = str(file_name)
         self._report_progress = report_progress
+        self._trace_allocation_index = trace_allocation_index
 
         # Initial pass to populate _header, _high_watermark, and _memory_snapshots.
         cdef shared_ptr[RecordReader] reader_sp = make_shared[RecordReader](
@@ -752,9 +757,8 @@ cdef class FileReader:
                 else:
                     break
         self._high_watermark = finder.getHighWatermark()
-        #print("before allocations:", stats["n_allocations"])
         stats["n_allocations"] = progress_indicator.num_processed  
-        #print("after allocations:", stats["n_allocations"])
+        print(".................total allocations:", stats["n_allocations"])
 
     def __dealloc__(self):
         self.close()
@@ -828,7 +832,7 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-        print("memory_records_to_process: ", records_to_process)
+        print(".................memory_records_to_process(for plot): ", records_to_process)
         cdef ProgressIndicator progress_indicator = ProgressIndicator(
             "Processing allocation records",
             total=records_to_process,
@@ -865,6 +869,8 @@ cdef class FileReader:
         self._ensure_not_closed()
         # If allocation 0 caused the peak, we need to process 1 record, etc
         cdef size_t max_records = self._high_watermark.index + 1
+        if self._trace_allocation_index > 0:
+            max_records = self._trace_allocation_index
         yield from self._aggregate_allocations(max_records, merge_threads)
 
     def get_cpu_sample_records(self, merge_threads=True):
