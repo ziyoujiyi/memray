@@ -84,7 +84,7 @@ class FlameGraphReporter:
         super().__init__()
         self.data = data
         self.cpu_data = cpu_data
-        self.memory_records = memory_records  # no use ?
+        self.memory_records = memory_records  
         self.cpu_records = cpu_records
 
     @classmethod

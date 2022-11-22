@@ -718,7 +718,7 @@ bool inline RecordWriter::procNativeCpuSampleMsg(
 
 bool inline RecordWriter::writeRecordUnsafe(const AllocationRecord& record)
 {
-    d_stats.n_allocations += 1;
+    ++d_stats.n_allocations;
     RecordTypeAndFlags token{RecordType::ALLOCATION, static_cast<unsigned char>(record.allocator)};
     return writeSimpleType(token) && writeIntegralDelta(&d_last.data_pointer, record.address)
            && (hooks::allocatorKind(record.allocator) == hooks::AllocatorKind::SIMPLE_DEALLOCATOR
@@ -729,7 +729,7 @@ bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const AllocationRecord&
 {
     // DebugInfo::write_allocation_msg++;
 
-    d_stats.n_allocations += 1;
+    ++d_stats.n_allocations;
 
     msg->token = {RecordType::ALLOCATION, static_cast<unsigned char>(record.allocator)};
     msg->d_allocation.allocator = record.allocator;
@@ -754,7 +754,7 @@ bool inline RecordWriter::procAllocationMsg(
 
 bool inline RecordWriter::writeRecordUnsafe(const NativeAllocationRecord& record)
 {
-    d_stats.n_allocations += 1;
+    ++d_stats.n_allocations;
     RecordTypeAndFlags token{
             RecordType::ALLOCATION_WITH_NATIVE,
             static_cast<unsigned char>(record.allocator)};
@@ -767,7 +767,7 @@ bool inline RecordWriter::writeRecordMsgUnsafe(Msg* msg, const NativeAllocationR
 {
     // DebugInfo::write_native_allocation_msg++;
 
-    d_stats.n_allocations += 1;
+    ++d_stats.n_allocations;
     msg->token = {RecordType::ALLOCATION_WITH_NATIVE, static_cast<unsigned char>(record.allocator)};
 
     msg->d_last.native_frame_id = d_last.native_frame_id;

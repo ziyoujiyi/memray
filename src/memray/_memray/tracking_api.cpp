@@ -775,7 +775,7 @@ Tracker::BackgroundThread::start()
                     Tracker::deactivate();
                     break;
                 }
-                if (!d_writer->writeRecordMsg(MemoryRecord{timeElapsed(), rss})) {
+                if (!d_writer->writeRecordMsg(MemoryRecord{timeElapsed(), 0, rss})) {
                     std::cerr << "Failed to write output, deactivating tracking" << std::endl;
                     Tracker::deactivate();
                     break;

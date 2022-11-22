@@ -297,7 +297,7 @@ RecordReader::processAllocationRecord(const AllocationRecord& record)
         d_latest_allocation.frame_index = 0;
     }
     d_latest_allocation.native_segment_generation = 0;
-    d_latest_allocation.n_allocations = 1;
+    ++d_latest_allocation.n_allocations;
     return true;
 }
 
@@ -351,7 +351,7 @@ RecordReader::processNativeAllocationRecord(const NativeAllocationRecord& record
         d_latest_allocation.frame_index = 0;
         d_latest_allocation.native_segment_generation = 0;
     }
-    d_latest_allocation.n_allocations = 1;
+    ++d_latest_allocation.n_allocations;
     return true;
 }
 
@@ -455,6 +455,7 @@ RecordReader::parseMemoryRecord(MemoryRecord* record)
         return false;
     }
     record->ms_since_epoch += d_header.stats.start_time;
+    record->latest_allocation_index = d_latest_allocation.n_allocations;
     return true;
 }
 
@@ -1037,7 +1038,7 @@ RecordReader::dumpAllRecords()
                     Py_RETURN_NONE;
                 }
 
-                printf("time=%ld memory=%" PRIxPTR "\n", record.ms_since_epoch, record.rss);
+                printf("time=%llu memory=%" PRIxPTR "\n", record.ms_since_epoch, record.rss);
             } break;
             case RecordType::CPU_RECORD: {
                 printf("CPU_RECORD ");

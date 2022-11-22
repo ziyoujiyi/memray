@@ -42,14 +42,16 @@ cdef extern from "records.h" namespace "memray::tracking_api":
        object toPythonObject()
 
    struct MemoryRecord:
-       unsigned long int ms_since_epoch
+       unsigned long long int ms_since_epoch
+       unsigned long long int latest_allocation_index
        size_t rss
 
    struct CpuRecord:
        unsigned long int ms_since_epoch
 
    struct MemorySnapshot:
-       unsigned long int ms_since_epoch
+       unsigned long long int ms_since_epoch
+       unsigned long long int latest_allocation_index
        size_t rss
        size_t heap
 

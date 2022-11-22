@@ -1,30 +1,47 @@
 import _ from "lodash";
 
 export function initMemoryGraph(memory_records) {
+  //const time = memory_records.map((a) => new Date(a[0]).toLocaleString());
   const time = memory_records.map((a) => new Date(a[0]));
-  const resident_size = memory_records.map((a) => a[1]);
-  const heap_size = memory_records.map((a) => a[2]);
-
+  const allocation_index = memory_records.map((a) => a[1]);
+  const resident_size = memory_records.map((a) => a[2]);
+  const heap_size = memory_records.map((a) => a[3]);
+  // in each memory record, there exists many allocation indexes, highwater_index is possibly not equal to the latest_allocation_index
+  var str_time = []
+  for(let i = 0; i < time.length; ++i) {
+    str_time.push(time[i].toString() + " - " + allocation_index[i].toString());
+    //str_time.push(time[i].toString());
+    //str_time.push(allocation_index[i].toString());
+  }
   var resident_size_plot = {
-    x: time,
+    x: str_time,
     y: resident_size,
     mode: "lines",
     name: "Resident size",
   };
 
   var heap_size_plot = {
-    x: time,
+    x: str_time,
     y: heap_size,
     mode: "lines",
     name: "Heap size",
   };
-
+/*
+  var latest_allocation_plot = {
+    x: str_time,
+    y: allocation_index,
+    yaxis: 'y2',
+    mode: "lines",
+    name: "Allocation index"
+  };
+*/
+  //var data = [resident_size_plot, heap_size_plot, latest_allocation_plot];
   var data = [resident_size_plot, heap_size_plot];
 
   var layout = {
     xaxis: {
       title: {
-        text: "Time",
+        text: "Time(s)",
       },
     },
     yaxis: {
@@ -34,7 +51,14 @@ export function initMemoryGraph(memory_records) {
       tickformat: ".4~s",
       exponentformat: "B",
       ticksuffix: "B",
-    },
+    },/*
+    yaxis2: {
+      title: {
+          text: "Allocation Index",
+        },
+      overlaying: 'y', 
+      side: 'right'
+    },*/
   };
 
   var layout_small = {

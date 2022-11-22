@@ -100,7 +100,8 @@ struct HeaderRecord
 
 struct MemoryRecord
 {
-    unsigned long int ms_since_epoch;
+    unsigned long long int ms_since_epoch;
+    unsigned long long int latest_allocation_index;
     size_t rss;
 };
 
@@ -111,7 +112,8 @@ struct CpuRecord
 
 struct MemorySnapshot
 {
-    unsigned long int ms_since_epoch;
+    unsigned long long int ms_since_epoch;
+    unsigned long long int latest_allocation_index;
     size_t rss;
     size_t heap;
 };
@@ -156,7 +158,7 @@ struct Allocation
     frame_id_t native_frame_id{0};
     size_t frame_index{0};
     size_t native_segment_generation{0};
-    size_t n_allocations{1};
+    size_t n_allocations{0};
 
     PyObject* toPythonObject() const;
 };

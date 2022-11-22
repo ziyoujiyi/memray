@@ -366,7 +366,7 @@ cdef class AllocationRecord:
                 f"allocations={self.n_allocations}>")
 
 
-MemorySnapshot = collections.namedtuple("MemorySnapshot", "time rss heap")
+MemorySnapshot = collections.namedtuple("MemorySnapshot", "time latest_allocation_index rss heap")
 CpuSnapshot = collections.namedtuple("CpuSnapshot", "time")
 
 cdef class ProfileFunctionGuard:
@@ -711,6 +711,8 @@ cdef class FileReader:
 
         n_memory_snapshots_approx = 2048
         n_cpu_snapshots_approx = 2048
+        print("........start_time: \n",stats["start_time"])
+        print("........end_time: \n",stats["end_time"])
         if 0 < stats["start_time"] < stats["end_time"]:
             n_memory_snapshots_approx = (stats["end_time"] - stats["start_time"]) / 10
             n_cpu_snapshots_approx = (stats["end_time"] - stats["start_time"]) / 10
@@ -740,9 +742,10 @@ cdef class FileReader:
                     ##
                 elif ret == RecordResult.RecordResultMemoryRecord:
                     memory_record = reader.getLatestMemoryRecord()
-                    self._memory_snapshots.push_back(   # use in flamegraph
+                    self._memory_snapshots.push_back(   # used in flamegraph
                         _MemorySnapshot(
                             memory_record.ms_since_epoch,
+                            memory_record.latest_allocation_index,
                             memory_record.rss,
                             finder.getCurrentWatermark(),
                         )
@@ -832,7 +835,6 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-        print(".................memory_records_to_process(for plot): ", records_to_process)
         cdef ProgressIndicator progress_indicator = ProgressIndicator(
             "Processing allocation records",
             total=records_to_process,
@@ -867,10 +869,11 @@ cdef class FileReader:
 
     def get_high_watermark_allocation_records(self, merge_threads=True):
         self._ensure_not_closed()
-        # If allocation 0 caused the peak, we need to process 1 record, etc
-        cdef size_t max_records = self._high_watermark.index + 1
+        cdef size_t max_records = self._high_watermark.index
         if self._trace_allocation_index > 0:
             max_records = self._trace_allocation_index
+        print(".................memory_records_to_process(highwater): ", self._high_watermark.index)
+        print(".................memory_records_to_process(self-defined): ", self._trace_allocation_index)
         yield from self._aggregate_allocations(max_records, merge_threads)
 
     def get_cpu_sample_records(self, merge_threads=True):
@@ -915,7 +918,7 @@ cdef class FileReader:
 
     def get_memory_snapshots(self):
         for record in self._memory_snapshots:
-            yield MemorySnapshot(record.ms_since_epoch, record.rss, record.heap)
+            yield MemorySnapshot(record.ms_since_epoch, record.latest_allocation_index, record.rss, record.heap)
 
     def get_cpu_snapshots(self):
         for record in self._cpu_snapshots:

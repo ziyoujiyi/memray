@@ -74,7 +74,7 @@ SnapshotAllocationAggregator::addAllocation(const Allocation& allocation)
     // MY_DEBUG("add allocation - thread_id_t: %llu, frame_id_t: %llu, native_segment_generation: %d,
     // n_allocations: %d", "allocation_kind: %d", allocation.tid, allocation.native_frame_id,
     // allocation.native_segment_generation, allocation.n_allocations, allocation.allocator);
-    DebugInfo::add_allocation++;
+    ++DebugInfo::add_allocation;
     switch (hooks::allocatorKind(allocation.allocator)) {
         case hooks::AllocatorKind::SIMPLE_ALLOCATOR: {
             d_ptr_to_allocation[allocation.address] = allocation;
@@ -282,7 +282,7 @@ HighWatermarkFinder::processCpuSample(const CpuSample& cpuSample)
 void
 HighWatermarkFinder::processAllocation(const Allocation& allocation)
 {
-    size_t index = d_allocations_seen++;
+    size_t index = ++d_allocations_seen;
     switch (hooks::allocatorKind(allocation.allocator)) {
         case hooks::AllocatorKind::SIMPLE_ALLOCATOR: {
             d_current_memory += allocation.size;
