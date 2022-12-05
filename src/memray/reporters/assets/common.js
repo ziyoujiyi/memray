@@ -8,8 +8,9 @@ export function initMemoryGraph(memory_records) {
   const heap_size = memory_records.map((a) => a[3]);
   // in each memory record, there exists many allocation indexes, highwater_index is possibly not equal to the latest_allocation_index
   var str_time = []
-  for(let i = 0; i < time.length; ++i) {
-    str_time.push(time[i].toString() + " - " + allocation_index[i].toString());
+  str_time.push(time[0].toString() + " - " + allocation_index[0].toString())
+  for(let i = 1; i < time.length; ++i) {
+    str_time.push((time[i].getTime() - time[0].getTime()).toString() + " - " + allocation_index[i].toString());
     //str_time.push(time[i].toString());
     //str_time.push(allocation_index[i].toString());
   }
@@ -41,7 +42,7 @@ export function initMemoryGraph(memory_records) {
   var layout = {
     xaxis: {
       title: {
-        text: "Time(s)",
+        text: "Time(ms)",
       },
     },
     yaxis: {
