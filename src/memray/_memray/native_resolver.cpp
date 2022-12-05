@@ -106,9 +106,11 @@ MemorySegment::resolveFromSymbolTable(uintptr_t address, MemorySegment::Expanded
     };
     auto error_callback = [](void* _data, const char* msg, int errnum) {
         auto* data = reinterpret_cast<const CallbackData*>(_data);
+        /*
         LOG(ERROR) << "Error getting backtrace for address " << std::hex << data->address << std::dec
                    << " in segment " << data->segment->d_filename << " (errno " << errnum
                    << "): " << msg;
+        */
     };
     backtrace_syminfo(d_state, address, callback, error_callback, &data);
 }
