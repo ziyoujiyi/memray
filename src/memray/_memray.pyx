@@ -750,6 +750,8 @@ cdef class FileReader:
                             finder.getCurrentWatermark(),
                         )
                     )
+                    if self._trace_allocation_index > 0 and progress_indicator._cumulative_num_processed > self._trace_allocation_index:
+                        break
                 elif ret == RecordResult.RecordResultCpuRecord:
                     cpu_record = reader.getLatestCpuRecord()
                     self._cpu_snapshots.push_back(   # use in cpuflamegraph

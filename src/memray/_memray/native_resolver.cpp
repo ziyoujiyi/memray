@@ -398,6 +398,7 @@ SymbolResolver::findBacktraceState(const char* filename, uintptr_t address_start
 
     auto errorHandler = [](void* rawData, const char* msg, int errnum) {
         auto data = reinterpret_cast<const CallbackData*>(rawData);
+        std::cout << "\n";
         LOG(RESOLVE_LIB_LOG_LEVEL) << "Error creating backtrace state for segment " << data->fileName
                                    << "(errno " << errnum << "): " << msg;
     };
