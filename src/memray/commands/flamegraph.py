@@ -83,9 +83,27 @@ class FlamegraphCommand(HighWatermarkCommand):
             "--trace-allocation-index",
             action="store",
             dest="trace_allocation_index",  
-            help="type: int, default value is 0",
+            help="type: int, default value is 0, only for memory profiling",
             type=int,
             default=0
+        )
+        parser.add_argument(
+            "-tai-f",
+            "--trace-allocation-index-from",
+            action="store",
+            dest="trace_allocation_index_from",  
+            help="type: int, default value is 0, only for ranged cpu profiling",
+            type=int,
+            default=0
+        )
+        parser.add_argument(
+            "-tai-t",
+            "--trace-allocation-index-to",
+            action="store",
+            dest="trace_allocation_index_to",  
+            help="type: int, default value is -1, only for ranged cpu profiling",
+            type=int,
+            default=-1
         )
         parser.add_argument(
             "--filter-boring-frame",

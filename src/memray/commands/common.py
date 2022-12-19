@@ -171,7 +171,8 @@ class HighWatermarkCommand:
         **kwargs: Any
     ) -> None:
         try:
-            reader = FileReader(os.fspath(result_path), report_progress=True)
+            reader = FileReader(os.fspath(result_path), report_progress=True, trace_allocation_index_from=kwargs["trace_allocation_index_from"],
+                                trace_allocation_index_to=kwargs["trace_allocation_index_to"])
             if reader.cpumetadata.has_native_traces:
                 warn_if_not_enough_symbols()
             snapshot = reader.get_cpu_sample_records(
@@ -210,6 +211,9 @@ class HighWatermarkCommand:
             kwargs["merge_threads"] = not args.split_threads
         kwargs["filter_boring_frame"] = args.filter_boring_frame
         kwargs["trace_allocation_index"] = args.trace_allocation_index
+        
+        kwargs["trace_allocation_index_from"] = args.trace_allocation_index_from
+        kwargs["trace_allocation_index_to"] = args.trace_allocation_index_to
 
         logger.info(args)
         if args.trace_cpu:

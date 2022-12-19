@@ -53,6 +53,7 @@ from _memray.tracking_api cimport handle_greenlet_switch
 from _memray.tracking_api cimport install_trace_function
 from cpython cimport PyErr_CheckSignals
 from libc.stdint cimport uint64_t
+from libc.stdint cimport int64_t
 from libcpp cimport bool
 from libcpp.limits cimport numeric_limits
 from libcpp.memory cimport make_shared
@@ -686,7 +687,10 @@ cdef class FileReader:
     cdef bool _report_progress
     cdef size_t _trace_allocation_index
 
-    def __cinit__(self, object file_name, *, bool report_progress=False, size_t trace_allocation_index=0):
+    cdef int64_t _trace_allocation_index_from
+    cdef int64_t _trace_allocation_index_to
+
+    def __cinit__(self, object file_name, *, bool report_progress=False, size_t trace_allocation_index=0, int64_t trace_allocation_index_from=0, int64_t trace_allocation_index_to=-1):
         try:
             self._file = open(file_name)
         except OSError as exc:
@@ -698,6 +702,9 @@ cdef class FileReader:
             self._path = str(file_name)
         self._report_progress = report_progress
         self._trace_allocation_index = trace_allocation_index
+
+        self._trace_allocation_index_from = trace_allocation_index_from
+        self._trace_allocation_index_to = trace_allocation_index_to
 
         # Initial pass to populate _header, _high_watermark, and _memory_snapshots.
         cdef shared_ptr[RecordReader] reader_sp = make_shared[RecordReader](
@@ -797,21 +804,46 @@ cdef class FileReader:
             unique_ptr[FileSource](new FileSource(self._path))
         )
         cdef RecordReader* reader = reader_sp.get()
-        print("cpu_records_to_process: ", records_to_process)
-        while records_to_process > 0:
-            PyErr_CheckSignals()
-            ret = reader.nextRecord()
-            if ret == RecordResult.RecordResultCpuSamplingRecord:
-                aggregator.addCpuSample(reader.getLatestCpuSample())
-                records_to_process -= 1
-            elif ret == RecordResult.RecordResultCpuRecord:
-                pass
-            elif ret == RecordResult.RecordResultMemoryRecord:
-                pass
-            elif ret == RecordResult.RecordResultAllocationRecord:
-                pass    
-            else:
-                break
+        if self._trace_allocation_index_to == -1:
+            print("cpu_records_to_process(total): ", records_to_process)   
+            while records_to_process > 0:
+                PyErr_CheckSignals()
+                ret = reader.nextRecord()
+                if ret == RecordResult.RecordResultCpuSamplingRecord:
+                    aggregator.addCpuSample(reader.getLatestCpuSample())
+                    records_to_process -= 1
+                elif ret == RecordResult.RecordResultCpuRecord:
+                    pass
+                elif ret == RecordResult.RecordResultMemoryRecord:
+                    pass
+                elif ret == RecordResult.RecordResultAllocationRecord:
+                    pass    
+                else:
+                    break
+        else:
+            print("allocation-index from {} to {}".format(self._trace_allocation_index_from, self._trace_allocation_index_to))
+            print("total_cpu_records: ", records_to_process)  
+            allocation_cnt = 0
+            cpu_records_to_process = 0
+            while records_to_process > 0:
+                PyErr_CheckSignals()
+                ret = reader.nextRecord()
+                if ret == RecordResult.RecordResultCpuSamplingRecord:
+                    if allocation_cnt >= self._trace_allocation_index_from and allocation_cnt <= self._trace_allocation_index_to:
+                        aggregator.addCpuSample(reader.getLatestCpuSample())
+                        cpu_records_to_process += 1
+                    elif allocation_cnt > self._trace_allocation_index_to:
+                        break
+                    records_to_process -= 1
+                elif ret == RecordResult.RecordResultCpuRecord:
+                    pass
+                elif ret == RecordResult.RecordResultMemoryRecord:
+                    pass
+                elif ret == RecordResult.RecordResultAllocationRecord:
+                    allocation_cnt += 1    
+                else:
+                    break
+            print("cpu_records_to_process: ", cpu_records_to_process) 
 
         for elem in Py_ListFromSnapshotCpuSampleRecords(
             aggregator.getSnapshotCpuSamples(merge_threads)
